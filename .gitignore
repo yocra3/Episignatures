@@ -37,3 +37,12 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+# Nextflow files
+*nextflow*
+
+# Data folders
+data/
+results/
+work/
+GDCdata/
