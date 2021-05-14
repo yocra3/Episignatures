@@ -19,6 +19,7 @@ include { R_FILTER_MISSINGS_HDF5 } from '../modules/local/r_filter_missings_hdf5
 include { R_FILTER_INVARIANTCPG_HDF5 } from '../modules/local/r_filter_invariantcpg_hdf5/main.nf' addParams( options: [publish_dir: "preprocess/${date}"])
 include { R_SUBSTITUE_MISSING_HDF5 } from '../modules/local/r_substitue_missing_hdf5/main.nf' addParams( options: [publish_dir: "preprocess/${date}"])
 include { R_WRITE_TCGA_LABELS } from '../modules/local/r_write_tcga_labels/main.nf' addParams( options: [publish_dir: "preprocess/${date}"])
+include { PY_RESHAPE_HDF5 } from '../modules/local/py_reshape_hdf5/main.nf' addParams( options: [publish_dir: "preprocess/${date}"])
 
 
 workflow  {
@@ -28,4 +29,6 @@ workflow  {
   R_SUBSTITUE_MISSING_HDF5( R_FILTER_INVARIANTCPG_HDF5.out )
 
   R_WRITE_TCGA_LABELS( ch_hdf5.collect() )
+
+  PY_RESHAPE_HDF5( R_SUBSTITUE_MISSING_HDF5.out.h5, R_WRITE_TCGA_LABELS.out )
 }

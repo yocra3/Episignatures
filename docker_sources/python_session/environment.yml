@@ -1,0 +1,18 @@
+# You can use this file to create a conda environment for this pipeline:
+#   conda env create -f environment.yml
+name: episignatures
+channels:
+  - conda-forge
+  - bioconda
+  - anaconda
+  - defaults
+
+dependencies:
+  - conda-forge::pymdown-extensions
+  - conda-forge::pygments
+  - anaconda::h5py
+  - conda-forge::numpy
+  - conda-forge::scikit-learn
+  - conda-forge::matplotlib
+  - conda-forge::pandas
+  - conda-forge::keras

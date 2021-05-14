@@ -4,24 +4,27 @@ include { initOptions; saveFiles; getSoftwareName } from './functions'
 params.options = [:]
 options        = initOptions(params.options)
 
-process R_SUBSTITUE_MISSING_HDF5 {
+process PY_EXPORT_RESULTS {
 
-    label 'process_medium'
+    label 'process_high'
     publishDir "${params.outdir}",
         mode: params.publish_dir_mode,
         saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
 
-    container 'yocra3/episignatures_rsession:1.0'
+    container 'yocra3/episignatures_python:1.0'
 
     input:
-    tuple val(prefix), path(hdf5), path(rds)
+    path('assay_reshaped.h5')
+    path('history_model.pb')
+    path('model.pb')
+    path('test.pb')
 
     output:
-    tuple val("${prefix}missingSub_"), path("*.h5"), path("*.rds"), emit: res
-    path("*.h5"), emit: h5
+    path("*.tsv"), emit: tsv
+    path("*.txt"), emit: txt
 
     script:
     """
-    substitute_missings.R $prefix
+    export_results.py 
     """
 }

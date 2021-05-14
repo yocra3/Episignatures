@@ -41,6 +41,9 @@ vignettes/*.pdf
 # Nextflow files
 *nextflow*
 
+# Report files
+*.html
+
 # Data folders
 data/
 results/
