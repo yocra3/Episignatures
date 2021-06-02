@@ -4,25 +4,23 @@ include { initOptions; saveFiles; getSoftwareName } from './functions'
 params.options = [:]
 options        = initOptions(params.options)
 
-process PY_DIVIDE_TRAIN_TEST {
+process R_CPGS_MEDIANS {
 
-    label 'process_high'
+    label 'process_low'
     publishDir "${params.outdir}",
         mode: params.publish_dir_mode,
         saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
 
-    container 'yocra3/episignatures_python:1.0'
+    container 'yocra3/episignatures_rsession:1.0'
 
     input:
-    path('assays.h5')
-    val(prop)
+    tuple val(prefix), path(hdf5), path(rds)
 
     output:
-    path("train.pb"), emit: train
-    path("test.pb"), emit: test
+    path "*.Rdata", emit: res
 
     script:
     """
-    divide_train_test.py $prop
+    cpg_medians_hdf5.R $prefix
     """
 }

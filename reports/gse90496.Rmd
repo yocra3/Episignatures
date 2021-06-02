@@ -1,0 +1,192 @@
+---
+title: "Evaluation of model in gse90496"
+author: "Carlos Ruiz"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+
+## Introduction
+
+In this model, we will evaluate the first configuration of the CNN model to classify TCGA samples in the GEO dataset GSE90496. 
+
+```{r}
+library(tidyverse)
+library(HDF5Array)
+library(SummarizedExperiment)
+
+version <- "2021-05-27"
+
+classification <- read_table2(paste0("../results/gse90496/", version, "/prediction.tsv"))
+SE <- loadHDF5SummarizedExperiment(dir = paste0("../results/preprocess_gse90496/", version), prefix = "GSE90496_rawinputProbes_")
+```
+
+## TCGA trained model
+
+```{r}
+tcga_class <- classification$`0`
+class_df <- data.frame(ori_class = SE$`methylation class:ch1`, tcga_class) %>%
+  tibble() %>%
+  mutate(ori_class_sum = ifelse(grepl("^CONTR", ori_class), "Control", 
+                                ifelse(grepl("GBM", ori_class), "GBM", "Tumor")),
+         match = (ori_class_sum == "Control" & tcga_class == "Normal") |
+           (ori_class_sum == "GBM" & tcga_class == "TCGA-GBM") |
+           (ori_class_sum == "Tumor" & tcga_class == "TCGA-LGG")
+  )
+map_df <- table(class_df$ori_class, class_df$tcga_class) %>%
+  data.frame() %>%
+  tibble() %>%
+  mutate(GEO = Var1,
+         model = Var2) 
+```
+
+```{r fig.height = 5, fig.width = 20, fig.align = "center"}
+
+map_df %>%
+    ggplot(aes(x = GEO, y = model, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1) +
+   scale_fill_gradient(low = "white",
+                      high = "blue") +
+  theme(legend.position = "none",
+        axis.text.x  = element_text(angle = 45, vjust=0.5))
+
+```
+
+```{r fig.height = 5, fig.width = 20, fig.align = "center"}
+map_df %>%
+  filter(!Var2 %in% c("TCGA-ACC", "TCGA-BLCA", "TCGA-LUAD", "TCGA-PAAD", "TCGA-PRAD", "TCGA-THCA")) %>%
+    ggplot(aes(x = GEO, y = model, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1) +
+   scale_fill_gradient(low = "white",
+                      high = "blue") +
+  theme(legend.position = "none",
+        axis.text.x  = element_text(angle = 45, vjust=0.5))
+
+```
+
+Most of the samples are classified in the TCGA-LGG category (Brain Lower Grade Glioma), while other group of samples are classified under the TCGA-GBM category (Glioblastoma multiforme). Some control samples were also correctly identified as controls. However, some tumor subtypes were only classified as normal.
+
+```{r}
+table(class_df$tcga_class, class_df$ori_class_sum)
+```
+
+```{r}
+class_df %>%
+  summarize(accuracy = mean(match),
+            recall = sum(match & ori_class_sum != "Control") / sum(ori_class_sum != "Control"),
+            precision = sum(tcga_class %in% c("TCGA-GBM", "TCGA-LGG") &  ori_class_sum != "Control") /  sum(tcga_class %in% c("TCGA-GBM", "TCGA-LGG")),
+            specificity = sum(match & ori_class_sum == "Control") / sum(ori_class_sum == "Control"))
+
+```
+We achieved an accuracy of 72.5% to classify tumor samples in the new cohort. Our model is lacking specificity, as it is not able to identify control samples. 
+
+
+## Transfer learning
+
+```{r}
+confusion <- read.delim(paste0("../results/gse90496_transfer/", version, "/confussionMatrix.tsv"))
+report <- read_table(paste0("../results/gse90496_transfer/", version, "/classificationReport.txt"))
+eval <- read_table2(paste0("../results/gse90496_transfer/", version, "/training_evaluation.tsv"), col_names =  FALSE)
+class <- read.delim(paste0("../results/gse90496_transfer/", version, "/prediction.tsv"))
+```
+
+### Training evaluation
+
+```{r}
+eval_df <- eval[, -1] %>%
+  t() %>%
+  data.frame() %>%
+  tibble()
+colnames(eval_df) <- eval$X1
+
+
+eval_df2 <- eval_df %>%
+  mutate(Epoch = seq_len(nrow(eval_df))) %>%
+  gather(Category, Score, 1:4)
+
+eval_df2 %>%
+  filter(Category %in% c("val_loss", "loss")) %>%
+  mutate(Dataset = ifelse(Category == "loss", "Training", "Validation")) %>%
+  ggplot(aes(x = Epoch, y = Score, group = Dataset, color = Dataset)) +
+  geom_line() +
+  ylab("Loss") +
+  theme_bw()
+```
+
+Loss function drops consistently for all epochs.
+
+```{r}
+eval_df2 %>%
+  filter(Category %in% c("categorical_accuracy", "val_categorical_accuracy")) %>%
+  mutate(Dataset = ifelse(Category == "categorical_accuracy", "Training", "Validation")) %>%
+  ggplot(aes(x = Epoch, y = Score, group = Dataset, color = Dataset)) +
+  geom_line() +
+  ylab("Accuracy") +
+  theme_bw()
+```
+
+Accuracy follows the same pattern than loss, with a constant increasing along the whole range.
+
+### Classification
+
+```{r}
+tail(report, 3)
+```
+
+We obtained an accuracy and recall around 80%.
+
+```{r}
+filter(report, !X1 %in% c("accuracy", "macro avg", "weighted avg")) %>%
+  arrange(precision)
+```
+
+
+```{r fig.height = 11, fig.width = 11, fig.align = "center"}
+confusion %>%
+  mutate(True = colnames(.)) %>%
+  gather(Predicted, N, 1:91) %>%
+  ggplot(aes(x = Predicted, y = True, fill = N)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%1.0f", N)), vjust = 1) +
+   scale_fill_gradient(low = "white",
+                      high = "blue") +
+  theme(legend.position = "none",
+        axis.text.x  = element_text(angle = 45, vjust=0.5))
+
+```
+Most of the are correctly classified. In order to explore the possible problems, we will focus on those tumors having more than 5 individuals wrongly classified:
+
+```{r}
+conf <- data.matrix(confusion)
+diag(conf) <- 0
+col <- which(colSums(conf) > 5)
+row <- which(rowSums(conf) > 5)
+index <- sort(unique(c(col, row)))
+
+confusion[index, index] %>%
+  mutate(True = colnames(.)) %>%
+  gather(Predicted, N, seq_len(length(index))) %>%
+  ggplot(aes(x = Predicted, y = True, fill = N)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%1.0f", N)), vjust = 1) +
+   scale_fill_gradient(low = "white",
+                      high = "blue") +
+  theme(legend.position = "none",
+        axis.text.x  = element_text(angle = 45, vjust=0.5))
+
+```
+
+```{r}
+class_mod <- class %>% 
+  mutate(Real_fam = sapply(strsplit(Real, ","), `[`, 1),
+         Predicted_fam = sapply(strsplit(Predicted, ","), `[`, 1))
+class_mod %>%
+  summarize(accuracy_family = mean(Real_fam == Predicted_fam),
+            accuracy_tumor = mean(Real == Predicted))
+```

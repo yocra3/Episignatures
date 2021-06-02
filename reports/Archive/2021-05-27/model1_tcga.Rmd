@@ -16,11 +16,11 @@ In this model, we will evaluate the first configuration of the CNN model to clas
 
 ```{r}
 library(tidyverse)
-version <- "2021-05-27"
+version <- "2021-05-14"
 
-confusion <- read_table2(paste0("../results/tcga_model/", version, "/confussionMatrix.tsv"))
-report <- read_table(paste0("../results/tcga_model/", version, "/classificationReport.txt"))
-eval <- read_table2(paste0("../results/tcga_model/", version, "/training_evaluation.tsv"), col_names =  FALSE)
+confusion <- read_table2("../results/tcga_model/2021-05-14/confussionMatrix.tsv")
+report <- read_table("../results/tcga_model/2021-05-14/classificationReport.txt")
+eval <- read_table2("../results/tcga_model/2021-05-14/training_evaluation.tsv", col_names =  FALSE)
 ```
 
 ## Training evaluation
@@ -108,4 +108,4 @@ confusion[index, index] %>%
 
 ```
 
-The plot show the greatest confussion between the groups. Most READ cancer were classified as COAD, two types of colon cancer. Some confussion were also observed between LGG and GBM tumors, two types of brain cancer. Finally, ESCA tumor were wrongly classified in STAD, tumors from stomach cancer. 
+The plot show the greatest confussion between the groups. Aroung 10% of normal samples were wrongly classified as BRCA cancer. We also observed that most READ cancer were classified as COAD, two types of colon cancer. Some confussion were also observed between LGG and GBM tumors, two types of brain cancer. Finally, ESCA tumor were wrongly classified in HNSC (Head and Neck squamous cell carcinoma) and STAD, tumors from stomach cancer. 

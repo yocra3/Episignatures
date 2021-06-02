@@ -1,0 +1,115 @@
+---
+title: "RandomSearch"
+author: "Carlos Ruiz"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+## Introduction
+
+In this report, we present the results from the hyperparameters optimization using RandomSearch. We tested four aspects of the network: number of CNN filters, kernel of CNN filters, stride of CNN filters and number of nodes of the dense network. We samples 50 combinations of these hyperparameters using 5-fold CV. Each model was run for 2 epochs.
+
+```{r}
+library(tidyverse)
+```
+## Results
+
+Reading results
+
+```{r}
+random_res <- read_table2("../results/tcga_model/2021-05-12/results_50iter_round1.tsv", 
+                          col_names = FALSE ) 
+random_mat <- t(random_res[-10, -1])
+class(random_mat) <- "numeric"
+colnames(random_mat) <- random_res$X1[-10]
+random_df <- data.frame(random_mat)
+```
+We will explore the correlation between each variable with the model score, computed as negative logistic loss. Thus, higher negative logistic loss are associated with better models.
+
+### Number of CNN filters
+
+```{r}
+ggplot(random_df, aes(x = param_filters, y = mean_test_score)) +
+  geom_point(position = "jitter") +  geom_smooth(method=lm) +
+  theme_bw()
+summary(lm(param_filters ~ mean_test_score, random_df))
+```
+
+There is no correlation between the number of CNN filters and the model score. 
+
+### Kernel size
+
+This hyperparameter defines how many CpGs are included in each CNN filter.
+
+```{r}
+ggplot(random_df, aes(x = param_kernel_size, y = mean_test_score)) +
+  geom_point(position = "jitter") +  geom_smooth(method=lm) +
+  theme_bw()
+summary(lm(param_kernel_size ~ mean_test_score, random_df))
+```
+
+Shorter kernels seem to have better performance, though there is no a strong relationship.
+
+### Stride proportion
+
+We defined this hyperparameter as the proportion between the kernel size and the stride. This hyperparamter measures the degree of overlap between the CNN filter. A stride proportion of 1, means that there is no overlap between the CNN filters.
+
+```{r}
+ggplot(random_df, aes(x = param_stride_prop, y = mean_test_score)) +
+  geom_point() +  geom_smooth(method=lm) +
+  theme_bw()
+summary(lm(param_stride_prop ~ mean_test_score, random_df))
+```
+
+We do not see substantial difference in score between the stride proportions.
+
+### Number of nodes in DNN
+
+```{r}
+ggplot(random_df, aes(x = param_dense_layer_sizes, y = mean_test_score)) +
+  geom_point(position = "jitter") +  geom_smooth(method=lm) +
+  theme_bw()
+summary(lm(param_dense_layer_sizes ~ mean_test_score, random_df))
+```
+
+For a layer size of 64, we achieved high a consistent performance. For larger layer sizes, we achived some iteration with higher performance but other with much lower performance.
+
+
+### Number of nodes in DNN + Kernel size
+
+```{r}
+random_df %>%
+  mutate(rank_Q = cut(rank_test_score, 
+                              breaks = quantile(rank_test_score, seq(0, 1, 0.2)),
+                              labels = paste0("Q", 1:5),
+                              include.lowest = TRUE)) %>%
+  ggplot(aes(x = param_dense_layer_sizes, y = param_kernel_size, color = rank_Q)) +
+ geom_point(position = "jitter")  +  
+  theme_bw()
+```
+
+When the number of nodes and the kernel size are combined, the better results are obteined for a layer size of 64 or larger and a kernel lower than 500. 
+
+
+```{r}
+random_df %>%
+  filter(param_dense_layer_sizes >= 64) %>%
+ggplot(aes(x = param_kernel_size, y = mean_test_score)) +
+  geom_point(position = "jitter") +  geom_smooth(method=lm) +
+  theme_bw()
+```
+When restricting the combinations to a layer size of 64, shorter kernels achieved better performance.
+
+```{r}
+random_df %>%
+  filter(param_kernel_size < 1000) %>%
+ggplot(aes(x = param_dense_layer_sizes, y = mean_test_score)) +
+  geom_point(position = "jitter") +  geom_smooth(method=lm) +
+  theme_bw()
+```
+
+When restricting the models to kernel sizes smaller than 1024, we do not observe big differences between the scores of dense layers >= 64.

@@ -4,7 +4,7 @@ include { initOptions; saveFiles; getSoftwareName } from './functions'
 params.options = [:]
 options        = initOptions(params.options)
 
-process PY_DIVIDE_TRAIN_TEST {
+process RUN_MODEL {
 
     label 'process_high'
     publishDir "${params.outdir}",
@@ -14,15 +14,15 @@ process PY_DIVIDE_TRAIN_TEST {
     container 'yocra3/episignatures_python:1.0'
 
     input:
-    path('assays.h5')
-    val(prop)
+    path('model.pb')
+    path('assay_reshaped.h5')
+
 
     output:
-    path("train.pb"), emit: train
-    path("test.pb"), emit: test
+    path("*.tsv"), emit: res
 
     script:
     """
-    divide_train_test.py $prop
+    run_model.py
     """
 }

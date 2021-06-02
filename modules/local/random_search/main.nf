@@ -6,7 +6,11 @@ options        = initOptions(params.options)
 
 process RANDOM_SEARCH {
 
+    tag "$round"
+
     label 'process_high'
+    label 'process_long'
+
     publishDir "${params.outdir}",
         mode: params.publish_dir_mode,
         saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
@@ -15,8 +19,8 @@ process RANDOM_SEARCH {
 
     input:
     path('input.pb')
-    path('randomconfig.py')
-    val(round)
+    tuple val(round), path('randomconfig.py')
+
 
     output:
     path("*.pb"), emit: pickle

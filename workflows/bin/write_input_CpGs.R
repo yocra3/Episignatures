@@ -15,11 +15,7 @@ library(SummarizedExperiment)
 
 SE <- loadHDF5SummarizedExperiment(dir = "./", prefix = setPrefix)
 
-project <- SE$project
-if ("sample_type" %in% colnames(colData(SE))){
-  project[SE$sample_type == "Solid Tissue Normal"] <- "Normal"
-}
-
-write.table(project, file = "TCGA_individuals_cancer_labels.txt", quote = FALSE, 
+probes <- rownames(SE)
+write.table(probes, file = "input_CpGs.txt", quote = FALSE, 
             row.names = FALSE, col.names = FALSE)
 

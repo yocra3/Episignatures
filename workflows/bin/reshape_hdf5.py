@@ -18,8 +18,7 @@ f.close()
 
 with open('labels.txt','r') as file:
     project = file.read()
-project = project.split('\n')[0:9813]
-project = project[0:9813]
+project = project.split('\n')[0:-1]
 
 ## Convert labels to integers labels
 # integer encode
@@ -33,6 +32,6 @@ dataset_input = f.create_dataset('methy', (x_train.shape[0], x_train.shape[1], 1
 dataset_label = f.create_dataset('label', (len(label_int),))
 dataset_input[...] = x_train
 dataset_label[...] = label_int
-dataset_label.attrs['labels'] = label_encoder.classes_.tolist(89))
+dataset_label.attrs['labels'] = label_encoder.classes_.tolist()
 f.close()
 

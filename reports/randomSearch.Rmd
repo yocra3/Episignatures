@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 
 ## Introduction
 
-In this report, we present the results from the hyperparameters optimization using RandomSearch. We tested four aspects of the network: number of CNN filters, kernel of CNN filters, stride of CNN filters and number of nodes of the dense network. We samples 50 combinations of these hyperparameters using 5-fold CV. Each model was run for 2 epochs.
+In this report, we present the results from the hyperparameters optimization using RandomSearch. We tested four aspects of the network: number of CNN filters, kernel of CNN filters, stride of CNN filters and number of nodes of the dense network. We samples 50 combinations of these hyperparameters using 5-fold CV. Each model was run for 4 epochs.
 
 ```{r}
 library(tidyverse)
@@ -21,12 +21,16 @@ library(tidyverse)
 Reading results
 
 ```{r}
-random_res <- read_table2("../results/tcga_model/2021-05-12/results_50iter_round1.tsv", 
+random_res1 <- read_table2("../results/tcga_model/2021-05-26/results_50iter_round1.tsv", 
                           col_names = FALSE ) 
-random_mat <- t(random_res[-10, -1])
+random_res2 <- read_table2("../results/tcga_model/2021-05-26/results_50iter_round2.tsv", 
+                          col_names = FALSE ) 
+random_res <- cbind(random_res1, random_res2[, -1])
+random_mat <- t(random_res[-12, -1])
 class(random_mat) <- "numeric"
-colnames(random_mat) <- random_res$X1[-10]
-random_df <- data.frame(random_mat)
+colnames(random_mat) <- random_res$X1[-12]
+random_df <- data.frame(random_mat) %>%
+  tibble()
 ```
 We will explore the correlation between each variable with the model score, computed as negative logistic loss. Thus, higher negative logistic loss are associated with better models.
 
@@ -51,21 +55,34 @@ ggplot(random_df, aes(x = param_kernel_size, y = mean_test_score)) +
   theme_bw()
 summary(lm(param_kernel_size ~ mean_test_score, random_df))
 ```
+ 
+ We have obtained good performances with short and long kernels.
 
-Shorter kernels seem to have better performance, though there is no a strong relationship.
+### Stride 
 
-### Stride proportion
-
-We defined this hyperparameter as the proportion between the kernel size and the stride. This hyperparamter measures the degree of overlap between the CNN filter. A stride proportion of 1, means that there is no overlap between the CNN filters.
+This hyperparamter measures the degree of overlap between the CNN filter. 
 
 ```{r}
-ggplot(random_df, aes(x = param_stride_prop, y = mean_test_score)) +
+ggplot(random_df, aes(x = param_stride, y = mean_test_score)) +
   geom_point() +  geom_smooth(method=lm) +
   theme_bw()
-summary(lm(param_stride_prop ~ mean_test_score, random_df))
+summary(lm(param_stride ~ mean_test_score, random_df))
 ```
 
-We do not see substantial difference in score between the stride proportions.
+We do not see substantial difference in score between the stride, although very short stride showed the worse performances.
+
+### Pooling window 
+
+This hyperparamter measures the degree of overlap between the CNN filter. 
+
+```{r}
+ggplot(random_df, aes(x = param_pool, y = mean_test_score)) +
+  geom_point() +  geom_smooth(method=lm) +
+  theme_bw()
+summary(lm(param_pool ~ mean_test_score, random_df))
+```
+
+There is no correlation between the window pooling and the score.
 
 ### Number of nodes in DNN
 
@@ -76,7 +93,7 @@ ggplot(random_df, aes(x = param_dense_layer_sizes, y = mean_test_score)) +
 summary(lm(param_dense_layer_sizes ~ mean_test_score, random_df))
 ```
 
-For a layer size of 64, we achieved high a consistent performance. For larger layer sizes, we achived some iteration with higher performance but other with much lower performance.
+The most consistent performances were achieved for dense layer sizes of 256. Until 64, we achieved good performance but then it dropped.
 
 
 ### Number of nodes in DNN + Kernel size
@@ -92,24 +109,71 @@ random_df %>%
   theme_bw()
 ```
 
-When the number of nodes and the kernel size are combined, the better results are obteined for a layer size of 64 or larger and a kernel lower than 500. 
+When the number of nodes and the kernel size are combined, the better results are obtained for a layer size of 256 and short kernels or for a layer size of 64 and long kernels.
 
 
 ```{r}
 random_df %>%
-  filter(param_dense_layer_sizes >= 64) %>%
+  filter(param_dense_layer_sizes == 256) %>%
 ggplot(aes(x = param_kernel_size, y = mean_test_score)) +
   geom_point(position = "jitter") +  geom_smooth(method=lm) +
   theme_bw()
 ```
-When restricting the combinations to a layer size of 64, shorter kernels achieved better performance.
+When restricting the combinations to a layer size of 256, shorter kernels achieved better performance.
 
 ```{r}
 random_df %>%
-  filter(param_kernel_size < 1000) %>%
+  filter(param_kernel_size > 16) %>%
 ggplot(aes(x = param_dense_layer_sizes, y = mean_test_score)) +
   geom_point(position = "jitter") +  geom_smooth(method=lm) +
   theme_bw()
 ```
 
-When restricting the models to kernel sizes smaller than 1024, we do not observe big differences between the scores of dense layers >= 64.
+When restricting the models to kernel sizes higher than 16, we do not observe big differences between the scores of dense layers >= 64.
+
+# Results in optimal kernel size and DNN layers
+
+We repeated the correlations between the score and the parameters by selection the models with better values of kernel size and DNN layers, the two hyperparameters with a higher influence on the score.
+
+### Number of CNN filters
+
+```{r}
+random_df %>%
+  filter(param_kernel_size > 16) %>%
+  filter(param_dense_layer_sizes == 256) %>%
+  ggplot(aes(x = param_filters, y = mean_test_score)) +
+    geom_point(position = "jitter") +  geom_smooth(method=lm) +
+    theme_bw()
+```
+
+Better values are obtained for a number of CNN filters => 16.
+
+### Stride 
+
+This hyperparamter measures the degree of overlap between the CNN filter. 
+
+```{r}
+random_df %>%
+  filter(param_kernel_size > 16) %>%
+  filter(param_dense_layer_sizes == 256) %>%
+ggplot(aes(x = param_stride, y = mean_test_score)) +
+  geom_point() +  geom_smooth(method=lm) +
+  theme_bw()
+```
+
+We do not observe clear differences due to stride.
+
+### Pooling window 
+
+This hyperparamter measures the degree of overlap between the CNN filter. 
+
+```{r}
+random_df %>%
+  filter(param_kernel_size > 16) %>%
+  filter(param_dense_layer_sizes == 256) %>%
+ggplot(aes(x = param_pool, y = mean_test_score)) +
+  geom_point() +  geom_smooth(method=lm) +
+  theme_bw()
+```
+
+We do not see big differences due to pooling.

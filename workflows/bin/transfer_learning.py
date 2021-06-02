@@ -2,7 +2,7 @@
 
 #'#################################################################################
 #'#################################################################################
-#'  Train TCGA network
+#'  Transfer learning using features from TCGA model
 #'#################################################################################
 #'#################################################################################
 
@@ -23,9 +23,6 @@ from keras.layers import Conv1D, MaxPooling1D, Dense, Dropout, Activation, Flatt
 from keras.wrappers.scikit_learn import KerasClassifier
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 
-sys.path.append('./')
-import network_config
-
 f = h5py.File('assay_reshaped.h5', 'r')
 proj_labels = f['label'].attrs['labels']
 f.close()
@@ -38,30 +35,33 @@ A = open('test.pb', 'rb')
 [x_test, y_test] = pickle.load(A)
 A.close()
 
+A = open('model.pb', 'rb')
+[model, labels] = pickle.load(A)
+A.close()
+
 input_shape = (x_train.shape[1], 1)
 num_classes = len(y_train[0])
 
-# Train model ####
-model = Sequential()
-## *********** First layer Conv
-model.add(Conv1D(network_config.filters, kernel_size = network_config.kernel_size, 
-    strides = network_config.stride, 
-    input_shape = input_shape))
-model.add(Activation('relu'))
-model.add(MaxPooling1D(network_config.pool))
-## ********* Classification layer
-model.add(Flatten())
-model.add(Dense(network_config.dense_layer_sizes, activation='relu'))
-model.add(Dense(num_classes, activation='softmax'))
-model.compile(loss='categorical_crossentropy',
+for i in range(6):
+    model.layers[i].trainable = False
+
+ll = model.layers[-3].output
+ll = Dense(512, activation="relu", name="dense_new")(ll)
+ll = Dense(num_classes, activation="softmax", name="dense_output")(ll)
+
+new_model = Model(inputs=model.input, outputs=ll)
+new_model.summary()
+new_model.compile(loss='categorical_crossentropy',
   optimizer = 'adam',
   metrics = ['categorical_accuracy'])
-callbacks = [EarlyStopping(monitor = 'val_loss', patience = 5, verbose = 1)]
-history = model.fit(x_train, y_train,
-  batch_size = 128,
+callbacks = [EarlyStopping(monitor = 'val_loss', patience = 10, verbose = 1)]
+
+history = new_model.fit(x_train, y_train,
+  batch_size = 64,
   epochs = 1000,
   verbose = 1, callbacks = callbacks, validation_data = (x_test, y_test))
 
+
 history_dict = history.history
 pickle.dump( history_dict, open( "history_model.pb", "wb" ), protocol = 4 )
-pickle.dump( [ model, proj_labels], open( "model.pb", "wb" ), protocol = 4 )
+pickle.dump( [ new_model, proj_labels], open( "new_model.pb", "wb" ), protocol = 4 )

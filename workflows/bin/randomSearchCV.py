@@ -18,6 +18,7 @@ import pandas as pd
 from numpy import array, argmax
 from sklearn.model_selection import RandomizedSearchCV
 from keras.models import Sequential, Model
+from keras.optimizers import Adam
 from keras.layers import Conv1D, MaxPooling1D, Dense, Dropout, Activation, Flatten, Input
 from keras.wrappers.scikit_learn import KerasClassifier
 
@@ -33,16 +34,16 @@ name = sys.argv[2]
 
 
 ## Model
-def make_model(dense_layer_sizes, filters, kernel_size, stride_prop):
+def make_model(dense_layer_sizes, filters, kernel_size, stride, alpha, pool):
     input_shape = (x_train.shape[1], 1)
     num_classes = len(y_train[0])
 
     model = Sequential()
     ## *********** First layer Conv
-    model.add(Conv1D(filters, kernel_size = kernel_size, strides = max(5, int(stride_prop * kernel_size)),
+    model.add(Conv1D(filters, kernel_size = kernel_size, strides = min(stride, kernel_size),
       input_shape = input_shape))
     model.add(Activation('relu'))
-    model.add(MaxPooling1D(2))
+    model.add(MaxPooling1D(pool))
     model.output_shape
 
     ## ********* Classification layer
@@ -50,9 +51,9 @@ def make_model(dense_layer_sizes, filters, kernel_size, stride_prop):
     model.add(Dense(dense_layer_sizes, activation='relu'))
     model.add(Dense(num_classes, activation='softmax'))
     model.output_shape
-
+    opt = Adam(learning_rate = alpha)
     model.compile(loss = 'categorical_crossentropy',
-                  optimizer = 'adam',
+                  optimizer = opt,
                   metrics = ['accuracy'])
     model.summary()
     return model

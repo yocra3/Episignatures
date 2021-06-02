@@ -14,6 +14,7 @@ process TRAIN_TCGA {
     container 'yocra3/episignatures_python:1.0'
 
     input:
+    path('assay_reshaped.h5')
     path('train.pb')
     path('test.pb')
     path('network_config.py')

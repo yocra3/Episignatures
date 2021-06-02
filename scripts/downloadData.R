@@ -113,18 +113,85 @@ ggplot(pc.comb, aes(x = PC1, color = sample_type)) +
   theme_bw()
   
   
-# GSE109381 ####
-pheno <- getGEO("GSE109381", GSEMatrix = TRUE)
-# files <- getGEOSuppFiles("GSE109381", baseDir = "data/") ## Download data (manually download and decompress)
+# GSE90496 ####
+## We do not download GSE109381 (superseries with also the validation cohort), because the methylation subtypes were
+## only manually checked and defined in the reference dataset
+library(GEOquery)
+library(HDF5Array)
+library(SummarizedExperiment)
+library(tidyverse)
 
-gzfiles <- dir("data/GEO/GSE62629", pattern = "gz", full.names = TRUE)
+geo.full <- getGEO("GSE90496", GSEMatrix = TRUE)[[1]]
+pheno <- pData(geo.full)[, c("methylation class:ch1", "characteristics_ch1", "geo_accession", "title")]
+pheno$project <- pheno$`methylation class:ch1`
+probes <- read_delim("data/GSE90496/probes.txt.gz", delim = "\t")
 
-methy <- lapply(gzfiles, function(x) read.delim(gzfile(x), header = FALSE, as.is = TRUE))
-methmat <- Reduce(cbind, lapply(methy, `[`, 3))
-sampNames <- gsub("data/GEO/GSE62629/", "", gzfiles)
-colnames(methmat) <- gsub("_.*", "", sampNames)
+beta_raw <- read_delim("data/GSE90496/beta_vals.txt.gz", delim = "\t")
+beta_raw <- data.matrix(beta_raw)
+colnames(beta_raw) <- colnames(geo.full)
+rownames(beta_raw) <- probes$ID_REF
 
-annot <- methy[[1]][, 1:2]
-annot$start <- annot$V2 + 1 ## Add 1 to ensure matching with EPIC annotation
-annotGR <- makeGRangesFromDataFrame(annot, seqnames.field = "V1",
-                                    end.field = "start")
+gse90496 <-  SummarizedExperiment(DelayedArray(beta_raw), colData = pheno)
+saveHDF5SummarizedExperiment(gse90496, "data/GSE90496/", prefix = "GSE90496_raw")
+
+
+# GSE82273 ####
+library(GEOquery)
+library(HDF5Array)
+library(SummarizedExperiment)
+library(tidyverse)
+
+options(timeout = 10000)
+
+geo.full <- getGEO("GSE82273", GSEMatrix = TRUE)[[1]]
+gse82273 <-  SummarizedExperiment(DelayedArray(exprs(geo.full)), 
+                                  colData = pData(geo.full),
+                                  rowData = fData(geo.full))
+
+# GSE84727 ####
+library(GEOquery)
+library(HDF5Array)
+library(SummarizedExperiment)
+library(tidyverse)
+
+options(timeout = 10000)
+
+geo.full <- getGEO("GSE84727", GSEMatrix = TRUE)[[1]]
+
+beta_raw <- read_delim("data/GSE84727/GSE84727_normalisedBetas.csv.gz", delim = ",")
+beta_mat <- data.matrix(beta_raw[, -1])
+rownames(beta_mat) <- beta_raw$X1
+
+
+pheno <- pData(geo.full)
+rownames(pheno) <- pheno$`sentrixids:ch1`
+colnames(beta_mat) <- pheno[colnames(beta_mat), "geo_accession"]
+
+pheno <- pData(geo.full)
+pheno <- pheno[colnames(beta_mat), ]
+pheno$project <- c("Control", "Schizophrenia")[as.numeric(pheno$`disease_status:ch1`)]
+
+gse84727 <-  SummarizedExperiment(DelayedArray(beta_mat), 
+                                  colData = pheno)
+saveHDF5SummarizedExperiment(gse84727, "data/GSE84727/", prefix = "GSE84727_raw")
+
+# GSE97362 ####
+library(GEOquery)
+library(HDF5Array)
+library(SummarizedExperiment)
+library(tidyverse)
+
+options(timeout = 10000)
+
+geo.full <- getGEO("GSE97362", GSEMatrix = TRUE)[[1]]
+
+## Remove samples with VUS - some with control episignature, others disease episignature
+geo.filt <- geo.full[, !grepl("VUS", geo.full$title)]
+geo.filt$project <- geo.filt$characteristics_ch1.3
+geo.filt$project[geo.filt$project == "disease state: CHD7 variant"] <- "disease state: CHARGE"
+geo.filt$project[geo.filt$project == "disease state: KMT2D variant"] <- "disease state: Kabuki"
+geo.filt <- geo.filt[, geo.filt$characteristics_ch1.3 != "disease state: KDM6A variant"]
+gse97362 <-  SummarizedExperiment(DelayedArray(exprs(geo.filt)), 
+                                  colData = pData(geo.filt),
+                                  rowData = fData(geo.filt))
+saveHDF5SummarizedExperiment(gse97362, "data/GSE97362/", prefix = "GSE97362_raw")

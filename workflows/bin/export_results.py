@@ -33,7 +33,7 @@ history = pickle.load(A)
 A.close()
 
 A = open('model.pb', 'rb')
-model = pickle.load(A)
+[model, labels] = pickle.load(A)
 A.close()
 
 A = open('test.pb', 'rb')
@@ -58,3 +58,9 @@ cr = classification_report(y_class, y_pred, target_names=proj_labels)
 text_file = open("classificationReport.txt", "w")
 text_file.write(cr)
 text_file.close()
+
+d = {'Real': labels[y_class], 'Predicted': labels[y_pred]}
+df = pd.DataFrame(data = d )
+df.to_csv('prediction.tsv',  sep = "\t", index = False)
+
+
