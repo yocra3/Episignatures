@@ -19,6 +19,7 @@ import h5py
 from numpy import array, argmax
 from sklearn.model_selection import RandomizedSearchCV
 from keras.models import Sequential, Model
+from keras.optimizers import Adam
 from keras.layers import Conv1D, MaxPooling1D, Dense, Dropout, Activation, Flatten, Input
 from keras.wrappers.scikit_learn import KerasClassifier
 from keras.callbacks import EarlyStopping, ModelCheckpoint
@@ -45,13 +46,15 @@ num_classes = len(y_train[0])
 for i in range(6):
     model.layers[i].trainable = False
 
-ll = model.layers[-2].output
+ll = model.layers[-3].output
+ll = Dense(256, activation="relu", name="dense_layer")(ll)
 ll = Dense(num_classes, activation="softmax", name="dense_output")(ll)
 
 new_model = Model(inputs=model.input, outputs=ll)
 new_model.summary()
+opt = Adam(learning_rate = 0.0001)
 new_model.compile(loss='categorical_crossentropy',
-  optimizer = 'adam',
+  optimizer = opt,
   metrics = ['categorical_accuracy'])
 callbacks = [EarlyStopping(monitor = 'val_loss', patience = 10, verbose = 1)]
 

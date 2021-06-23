@@ -1,0 +1,242 @@
+---
+title: "RandomSearch GEO blood"
+author: "Carlos Ruiz"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+## Introduction
+
+In this report, we present the results from the hyperparameters optimization using RandomSearch. We tested four aspects of the network: number of CNN filters, kernel of CNN filters, stride of CNN filters and number of nodes of the dense network. We samples 50 combinations of these hyperparameters using 5-fold CV. Each model was run for 4 epochs.
+
+```{r}
+library(tidyverse)
+```
+
+## First scan
+
+Reading results
+
+```{r}
+random_res1 <- read_table2("../results/GEOrefblood_model/2021-06-14/results_50iter_round1.tsv", 
+                          col_names = FALSE ) 
+random_res2 <- read_table2("../results/GEOrefblood_model/2021-06-14/results_50iter_round2.tsv", 
+                          col_names = FALSE ) 
+# random_res3 <- read_table2("../results/GEOrefblood_model/2021-06-11/results_50iter_round3.tsv", 
+#                           col_names = FALSE ) 
+random_res <- cbind(random_res1, random_res2[, -1])
+
+random_mat <- t(random_res[-12, -1])
+class(random_mat) <- "numeric"
+colnames(random_mat) <- random_res$X1[-12]
+random_df <- data.frame(random_mat) %>%
+  tibble() %>%
+  mutate(min_test_score = pmax(split0_test_score, split1_test_score, split2_test_score, 
+                               split3_test_score, split4_test_score))
+```
+We will explore the correlation between each variable with the model score, computed as negative logistic loss. Thus, higher negative logistic loss are associated with better models.
+
+### Number of CNN filters
+
+```{r}
+ggplot(random_df, aes(x = param_filters, y = log(-mean_test_score))) +
+  geom_point(position = "jitter") +  geom_smooth(method=lm) +
+  theme_bw()
+summary(lm(param_filters ~  log(-mean_test_score), random_df))
+```
+
+The best results are obtained for 2 filters.
+
+### Kernel size
+
+This hyperparameter defines how many CpGs are included in each CNN filter.
+
+```{r}
+ggplot(random_df, aes(x = param_kernel_size, y =  log(-mean_test_score))) +
+  geom_point(position = "jitter") +  geom_smooth(method=lm) +
+  theme_bw()
+summary(lm(param_kernel_size ~  log(-mean_test_score), random_df))
+```
+ 
+We got similar results independent of the kernel size. The best result is obtained for a kernel size of 6.
+
+### Stride 
+
+This hyperparamter measures the degree of overlap between the CNN filter. 
+
+```{r}
+ggplot(random_df, aes(x = param_stride, y =  log(-mean_test_score))) +
+  geom_point() +  geom_smooth(method=lm) +
+  theme_bw()
+summary(lm(param_stride ~  log(-mean_test_score), random_df))
+```
+
+We do not see substantial difference in score between the stride, although very short stride showed the worse performances.
+
+### Pooling window 
+
+This hyperparamter measures the degree of overlap between the CNN filter. 
+
+```{r}
+ggplot(random_df, aes(x = param_pool, y =  log(-mean_test_score))) +
+  geom_point() +  geom_smooth(method=lm) +
+  theme_bw()
+summary(lm(param_pool ~  log(-mean_test_score), random_df))
+```
+
+The best result is obtained for a pooling of 2. 
+
+### Number of nodes in DNN
+
+```{r}
+ggplot(random_df, aes(x = param_dense_layer_sizes, y =  log(-mean_test_score))) +
+  geom_point(position = "jitter") +  geom_smooth(method=lm) +
+  theme_bw()
+summary(lm(param_dense_layer_sizes ~  log(-mean_test_score), random_df))
+```
+
+There are no big differences in the performance due to this parameter. The best result is obtained for 128 nodes. 
+
+
+### Number of filters + Kernel size
+
+```{r}
+random_df %>%
+  mutate(rank_Q = cut(rank_test_score, 
+                              breaks = quantile(rank_test_score, seq(0, 1, 0.1)),
+                              labels = paste0("Q", 1:10),
+                              include.lowest = TRUE)) %>%
+  ggplot(aes(x = param_filters, y = param_kernel_size, color = rank_Q)) +
+ geom_point(position = "jitter")  +  
+  theme_bw()
+```
+
+When the number of nodes and the kernel size are combined, we do not observe a clear combination of the parameters with optimal results. 
+
+
+```{r}
+random_df %>%
+  filter(param_filters == 1) %>%
+ggplot(aes(x = param_kernel_size, y = log(-mean_test_score))) +
+  geom_point(position = "jitter") +  geom_smooth(method=lm) +
+  theme_bw()
+```
+A kernel size of 6 got the best score. 
+```{r}
+random_df %>%
+  filter(param_kernel_size > 9) %>%
+ggplot(aes(x = param_filters, y = log(-mean_test_score))) +
+  geom_point(position = "jitter") +  geom_smooth(method=lm) +
+  theme_bw()
+```
+
+When restricting the models to kernel sizes higher than 9, best performance was achieved for few filters.
+
+# Results in optimal kernel size and number of filters layers
+
+We repeated the correlations between the score and the parameters by selection the models with better values of kernel size and DNN layers, the two hyperparameters with a higher influence on the score.
+
+### Number of DNN nodes
+
+```{r}
+random_df %>%
+  filter(param_kernel_size > 9) %>%
+  filter(param_filters == 1) %>%
+  ggplot(aes(x = param_dense_layer_sizes, y =  log(-mean_test_score))) +
+    geom_point(position = "jitter") +  geom_smooth(method=lm) +
+    theme_bw()
+```
+
+We obtained the best results with few or hundreds of nodes in the DNN layer. 
+
+### Stride 
+
+This hyperparamter measures the degree of overlap between the CNN filter. 
+
+```{r}
+random_df %>%
+  filter(param_kernel_size > 9) %>%
+  filter(param_filters == 1) %>%
+ggplot(aes(x = param_stride, y =  log(-mean_test_score))) +
+  geom_point() +  geom_smooth(method=lm) +
+  theme_bw()
+```
+
+We do not observe clear differences due to stride.
+
+### Pooling window 
+
+This hyperparamter measures the degree of overlap between the CNN filter. 
+
+```{r}
+random_df %>%
+  filter(param_kernel_size > 9) %>%
+  filter(param_filters == 1) %>%
+ggplot(aes(x = param_pool, y = log(-mean_test_score))) +
+  geom_point() +  geom_smooth(method=lm) +
+  theme_bw()
+```
+Smaller polling seem to have better performance.
+
+## Second scan
+
+In the second scan, we fixed the kernel size to 14 and we explored the learning rate, stride and the number of nodes in the DNN.
+
+```{r}
+random_res3 <- read_table2("../results/GEOrefblood_model/2021-06-14/results_50iter_round3.tsv",
+                           col_names = FALSE )
+random_mat2 <- t(random_res3[-12, -1])
+class(random_mat2) <- "numeric"
+colnames(random_mat2) <- random_res3$X1[-12]
+random_df2 <- data.frame(random_mat2) %>%
+  tibble() %>%
+  mutate(min_test_score = pmax(split0_test_score, split1_test_score, split2_test_score, 
+                               split3_test_score, split4_test_score))
+```
+We will explore the correlation between each variable with the model score, computed as negative logistic loss. Thus, higher negative logistic loss are associated with better models.
+
+### Number of CNN filters
+
+```{r}
+ggplot(random_df2, aes(x = param_filters, y = log(-mean_test_score))) +
+  geom_point() +  geom_smooth(method=lm) +
+  theme_bw()
+```
+
+The best results are obtained for 2 filters.
+
+### Stride 
+
+This hyperparamter measures the degree of overlap between the CNN filter. 
+
+```{r}
+ggplot(random_df2, aes(x = param_stride, y =  log(-mean_test_score))) +
+  geom_point() +  geom_smooth(method=lm) +
+  theme_bw()
+```
+
+The best results was obtained with a stride of 4.
+
+
+### Number of nodes in DNN
+
+```{r}
+ggplot(random_df2, aes(x = param_dense_layer_sizes, y =  log(-mean_test_score))) +
+  geom_point() +  geom_smooth(method=lm) +
+  theme_bw()
+```
+
+The best results was obtained with 1024 nodes.
+
+### Learning rate
+
+```{r}
+ggplot(random_df2, aes(x = log10(param_alpha), y =  log(-mean_test_score))) +
+  geom_point() +  geom_smooth(method=lm) +
+  theme_bw()
+```
+The best results wre obtained with a learning rate of 1e-4.

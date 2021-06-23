@@ -1,4 +1,4 @@
-param_distributions = {'dense_layer_sizes': [128, 192, 256, 320, 384, 448, 512],
+param_distributions = {'dense_layer_sizes': [128],
   'epochs': [4],
   'filters': [1, 2, 4, 6, 8],
   'pool': [2, 4, 8, 16],

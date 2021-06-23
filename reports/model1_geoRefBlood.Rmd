@@ -1,0 +1,94 @@
+---
+title: "Evaluation of GSE55763 model"
+author: "Carlos Ruiz"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+
+## Introduction
+
+In this model, we will evaluate the first configuration of the CNN model to classify blood samples by differences in sex.
+
+```{r}
+library(tidyverse)
+version <- "2021-06-15"
+
+confusion <- read_table2(paste0("../results/GEOrefblood_model/", version, "/confussionMatrix.tsv"))
+probs <- read_table2(paste0("../results/GEOrefblood_model/", version, "/confussionMatrix.tsv"))
+
+report <- read_table(paste0("../results/GEOrefblood_model/", version, "/classificationReport.txt"))
+eval <- read_table2(paste0("../results/GEOrefblood_model/", version, "/training_evaluation.tsv"), col_names =  FALSE)
+```
+
+## Training evaluation
+
+```{r}
+eval_df <- eval[, -1] %>%
+  t() %>%
+  data.frame() %>%
+  tibble()
+colnames(eval_df) <- eval$X1
+
+
+eval_df2 <- eval_df %>%
+  mutate(Epoch = seq_len(nrow(eval_df))) %>%
+  gather(Category, Score, 1:4)
+
+eval_df2 %>%
+  filter(Category %in% c("val_loss", "loss")) %>%
+  mutate(Dataset = ifelse(Category == "loss", "Training", "Validation")) %>%
+  ggplot(aes(x = Epoch, y = Score, group = Dataset, color = Dataset)) +
+  geom_line() +
+  ylab("Loss") +
+  theme_bw()
+```
+
+Loss functions has a big drop after the first epoch. Then, it goes down slowly. In the validation dataset, we observed different peaks, suggesting an unstable fitting. `
+
+```{r}
+eval_df2 %>%
+  filter(Category %in% c("categorical_accuracy", "val_categorical_accuracy")) %>%
+  mutate(Dataset = ifelse(Category == "categorical_accuracy", "Training", "Validation")) %>%
+  ggplot(aes(x = Epoch, y = Score, group = Dataset, color = Dataset)) +
+  geom_line() +
+  ylab("Accuracy") +
+  theme_bw()
+```
+
+Accuracy steadily improved in the training dataset. In the validation, the accuracy showed an unstabkle profiles, with big changes between epochs. 
+
+## Classification
+
+```{r}
+tail(report, 3)
+```
+
+Acuracy was close to 94%.
+
+```{r}
+filter(report, !X1 %in% c("accuracy", "macro avg", "weighted avg")) %>%
+  arrange(precision)
+```
+
+
+
+```{r fig.height = 11, fig.width = 11, fig.align = "center"}
+confusion %>%
+  mutate(True = colnames(.)) %>%
+  gather(Predicted, N, 1:2) %>%
+  ggplot(aes(x = Predicted, y = True, fill = N)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%1.0f", N)), vjust = 1) +
+   scale_fill_gradient(low = "white",
+                      high = "blue") +
+  theme(legend.position = "none",
+        axis.text.x  = element_text(angle = 45, vjust=0.5))
+
+```
+
+Some females were not correctly classified. 

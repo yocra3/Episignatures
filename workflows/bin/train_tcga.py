@@ -19,6 +19,7 @@ import h5py
 from numpy import array, argmax
 from sklearn.model_selection import RandomizedSearchCV
 from keras.models import Sequential, Model
+from keras.optimizers import Adam
 from keras.layers import Conv1D, MaxPooling1D, Dense, Dropout, Activation, Flatten, Input
 from keras.wrappers.scikit_learn import KerasClassifier
 from keras.callbacks import EarlyStopping, ModelCheckpoint
@@ -53,8 +54,9 @@ model.add(MaxPooling1D(network_config.pool))
 model.add(Flatten())
 model.add(Dense(network_config.dense_layer_sizes, activation='relu'))
 model.add(Dense(num_classes, activation='softmax'))
+opt = Adam(learning_rate = network_config.alpha)
 model.compile(loss='categorical_crossentropy',
-  optimizer = 'adam',
+  optimizer = opt,
   metrics = ['categorical_accuracy'])
 callbacks = [EarlyStopping(monitor = 'val_loss', patience = 5, verbose = 1)]
 history = model.fit(x_train, y_train,

@@ -147,6 +147,7 @@ geo.full <- getGEO("GSE82273", GSEMatrix = TRUE)[[1]]
 gse82273 <-  SummarizedExperiment(DelayedArray(exprs(geo.full)), 
                                   colData = pData(geo.full),
                                   rowData = fData(geo.full))
+saveHDF5SummarizedExperiment(gse82273, "data/GSE82273/", prefix = "GSE82273_raw")
 
 # GSE84727 ####
 library(GEOquery)
@@ -187,7 +188,7 @@ geo.full <- getGEO("GSE97362", GSEMatrix = TRUE)[[1]]
 
 ## Remove samples with VUS - some with control episignature, others disease episignature
 geo.filt <- geo.full[, !grepl("VUS", geo.full$title)]
-geo.filt$project <- geo.filt$characteristics_ch1.3
+geo.filt$project <- geo.filt$characteristics_ch1.3GSE55763
 geo.filt$project[geo.filt$project == "disease state: CHD7 variant"] <- "disease state: CHARGE"
 geo.filt$project[geo.filt$project == "disease state: KMT2D variant"] <- "disease state: Kabuki"
 geo.filt <- geo.filt[, geo.filt$characteristics_ch1.3 != "disease state: KDM6A variant"]
@@ -195,3 +196,70 @@ gse97362 <-  SummarizedExperiment(DelayedArray(exprs(geo.filt)),
                                   colData = pData(geo.filt),
                                   rowData = fData(geo.filt))
 saveHDF5SummarizedExperiment(gse97362, "data/GSE97362/", prefix = "GSE97362_raw")
+
+# GSE55763 ####
+library(GEOquery)
+library(HDF5Array)
+library(SummarizedExperiment)
+library(tidyverse)
+library(minfi)
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+
+
+options(timeout = 10000)
+
+geo.full <- getGEO("GSE55763", GSEMatrix = TRUE)[[1]]
+
+pheno <- pData(geo.full)[, c("characteristics_ch1.1", "geo_accession", "title", 
+                             "characteristics_ch1.2", "characteristics_ch1.3", 
+                             "age:ch1", "dataset:ch1",  "gender:ch1")]
+pheno$project <- pheno$`gender:ch1`
+pheno_cols <- gsub("Peripheral blood, ", "", pheno$title)
+
+probes <- read_delim("data/GSE55763/probes.txt.gz", delim = "\t")
+
+beta_raw <- read_delim("data/GSE55763/beta_vals.txt.gz", delim = "\t")
+beta_raw <- data.matrix(beta_raw[, pheno_cols])
+
+colnames(beta_raw) <- colnames(geo.full)
+rownames(beta_raw) <- probes$ID_REF
+
+gse55763 <-  makeG(DelayedArray(beta_raw), colData = pheno)
+saveHDF5SummarizedExperiment(gse55763, "data/GSE55763/", prefix = "GSE55763_raw")
+
+## Add NA to positions with bad detection p-values
+se <- loadHDF5SummarizedExperiment(dir = "data/GSE55763/", prefix = "GSE55763_raw")
+cols <- read_delim("data/GSE55763/betas_header.txt", delim = "\t")
+detP <- read_delim("data/GSE55763/detection_pvals.txt.gz", delim = "\t")
+colnames(detP) <- colnames(cols)
+arr_names <- gsub("Peripheral blood, ", "", se$title)
+detP <- DelayedArray(data.matrix(detP[, arr_names]))
+assay(se)[detP != 0] <- NA
+
+## Add annotation
+data("Locations")
+grCpG <- makeGRangesFromDataFrame(Locations, start.field = "pos", end.field = "pos")
+rowRanges(se) <- grCpG[rownames(se)]
+saveHDF5SummarizedExperiment(se, "data/GSE55763/", prefix = "GSE55763_withNAs")
+
+se <- loadHDF5SummarizedExperiment(dir = "data/GSE55763/", prefix = "GSE55763_withNAs")
+se <- se[, se$characteristics_ch1.1 == "dataset: population study"]
+saveHDF5SummarizedExperiment(se, dir = "data/GSE55763/", prefix = "GSE55763_withNAs_noReplicates_")
+
+# Create GEO blood reference ####
+library(HDF5Array)
+library(SummarizedExperiment)
+
+se1 <- loadHDF5SummarizedExperiment("data/GSE82273/", prefix = "GSE82273_raw")
+se2 <- loadHDF5SummarizedExperiment(dir = "data/GSE55763/", prefix = "GSE55763_withNAs_noReplicates_")
+
+se1$sex <- se1$`gender:ch1`
+se2$sex <- ifelse(se2$project == "F", "female", "male")
+
+colData(se1) <- colData(se1)[, c("title", "geo_accession", "sex")]
+colData(se2) <- colData(se2)[, c("title", "geo_accession", "sex")]
+
+se_comb <- cbind(se1[rownames(se2), ], se2)
+se_comb$project <- se_comb$sex
+rowRanges(se_comb) <- rowRanges(se2)
+saveHDF5SummarizedExperiment(se_comb, dir = "data/GEO_ref_blood/", prefix = "GEOrefblood_")
