@@ -45,7 +45,7 @@ num_classes = len(y_train[0])
 for i in range(6):
     model.layers[i].trainable = False
 
-ll = model.layers[-2].output
+ll = model.layers[-3].output
 ll = Dense(num_classes, activation="softmax", name="dense_output")(ll)
 
 new_model = Model(inputs=model.input, outputs=ll)
@@ -53,7 +53,7 @@ new_model.summary()
 new_model.compile(loss='categorical_crossentropy',
   optimizer = 'adam',
   metrics = ['categorical_accuracy'])
-callbacks = [EarlyStopping(monitor = 'val_loss', patience = 10, verbose = 1)]
+callbacks = [EarlyStopping(monitor = 'val_loss', patience = 20, verbose = 1)]
 
 history = new_model.fit(x_train, y_train,
   batch_size = 64,

@@ -23,6 +23,7 @@ from keras.optimizers import Adam
 from keras.layers import Conv1D, MaxPooling1D, Dense, Dropout, Activation, Flatten, Input
 from keras.wrappers.scikit_learn import KerasClassifier
 from keras.callbacks import EarlyStopping, ModelCheckpoint
+from keras.regularizers import l2, l1
 
 sys.path.append('./')
 import network_config
@@ -45,14 +46,14 @@ num_classes = len(y_train[0])
 # Train model ####
 model = Sequential()
 ## *********** First layer Conv
-model.add(Conv1D(network_config.filters, kernel_size = network_config.kernel_size, 
-    strides = network_config.stride, 
+model.add(Conv1D(network_config.filters, kernel_size = network_config.kernel_size,
+    strides = network_config.stride,
     input_shape = input_shape))
 model.add(Activation('relu'))
 model.add(MaxPooling1D(network_config.pool))
 ## ********* Classification layer
 model.add(Flatten())
-model.add(Dense(network_config.dense_layer_sizes, activation='relu'))
+model.add(Dense(network_config.dense_layer_sizes, activation='relu', kernel_regularizer=l2(0.001)))
 model.add(Dense(num_classes, activation='softmax'))
 opt = Adam(learning_rate = network_config.alpha)
 model.compile(loss='categorical_crossentropy',

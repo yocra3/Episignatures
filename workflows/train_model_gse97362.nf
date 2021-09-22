@@ -18,16 +18,17 @@ probes = file("${params.input_probes}")
 model = file("${params.trained_model}")
 ch_network1 = file("${params.network1}")
 
-include { R_SUBSTITUE_MISSING_HDF5 } from '../modules/local/r_substitue_missing_hdf5/main.nf' addParams( options: [publish_dir: "preprocess/gse97362/${date}"])
-include { R_SELECT_INPUTCPG_HDF5 } from '../modules/local/r_select_inputcpgs_hdf5/main.nf' addParams( options: [publish_dir: "preprocess/gse97362/${date}"])
-include { PY_RESHAPE_HDF5 } from '../modules/local/py_reshape_hdf5/main.nf' addParams( options: [publish_dir: "preprocess/gse97362/${date}"])
+include { R_SUBSTITUE_MISSING_HDF5 } from '../modules/local/r_substitue_missing_hdf5/main.nf' addParams( options: [publish_dir: "preprocess/${params.fname}/${date}"])
+include { R_SELECT_INPUTCPG_HDF5 } from '../modules/local/r_select_inputcpgs_hdf5/main.nf' addParams( options: [publish_dir: "preprocess/${params.fname}/${date}"])
+include { PY_RESHAPE_HDF5 } from '../modules/local/py_reshape_hdf5/main.nf' addParams( options: [publish_dir: "preprocess/${params.fname}/${date}"])
 include { PY_DIVIDE_TRAIN_TEST } from '../modules/local/py_divide_training_test/main.nf' addParams( options: [publish_files : ['s':'']])
 include { R_WRITE_TCGA_LABELS } from '../modules/local/r_write_tcga_labels/main.nf' addParams( options: [publish_files : ['s':'']])
-include { TRANSFER_LEARNING } from '../modules/local/transfer_learning/main.nf' addParams( options: [publish_dir: "gse97362/${date}"])
-include { PY_EXPORT_RESULTS } from '../modules/local/py_export_results/main.nf' addParams( options: [publish_dir: "gse97362/${date}"])
-include { R_FILTER_INVARIANTCPG_HDF5 } from '../modules/local/r_filter_invariantcpg_hdf5/main.nf' addParams( options: [publish_dir: "preprocess/gse97362/${date}"])
-include { TRAIN_TCGA } from '../modules/local/train_tcga/main.nf' addParams( options: [publish_dir: "gse97362/${date}"])
-include { RUN_MODEL } from '../modules/local/run_model/main.nf' addParams( options: [publish_dir: "gse97362_model/${date}"])
+include { TRANSFER_LEARNING } from '../modules/local/transfer_learning/main.nf' addParams( options: [publish_dir: "${params.fname}/${date}"])
+include { PY_EXPORT_RESULTS } from '../modules/local/py_export_results/main.nf' addParams( options: [publish_dir: "${params.fname}/${date}"])
+include { R_FILTER_INVARIANTCPG_HDF5 } from '../modules/local/r_filter_invariantcpg_hdf5/main.nf' addParams( options: [publish_dir: "preprocess/${params.fname}/${date}"])
+include { TRAIN_TCGA } from '../modules/local/train_tcga/main.nf' addParams( options: [publish_dir: "${params.fname}/${date}"])
+include { RUN_MODEL } from '../modules/local/run_model/main.nf' addParams( options: [publish_dir: "${params.fname}_ori/${date}"])
+include { EXTRACT_MODEL_FEATURES } from '../modules/local/extract_model_features/main.nf' addParams( options: [publish_dir: "${params.fname}/${date}"])
 
 workflow  {
 
@@ -38,6 +39,7 @@ workflow  {
   PY_RESHAPE_HDF5( R_SELECT_INPUTCPG_HDF5.out.h5, R_WRITE_TCGA_LABELS.out )
 
   RUN_MODEL( model, PY_RESHAPE_HDF5.out )
+  EXTRACT_MODEL_FEATURES( model, PY_RESHAPE_HDF5.out )
 
   PY_DIVIDE_TRAIN_TEST ( PY_RESHAPE_HDF5.out, 0.2 )
   TRANSFER_LEARNING( PY_RESHAPE_HDF5.out, PY_DIVIDE_TRAIN_TEST.out.train, PY_DIVIDE_TRAIN_TEST.out.test, model, 'transfer' )

@@ -31,12 +31,8 @@ A = open('model.pb', 'rb')
 [model, labels] = pickle.load(A)
 A.close()
 
-Y_pred = model.predict(methy)
-y_pred = np.argmax(Y_pred, axis=1)
-
-df = pd.DataFrame(Y_pred)
-df.to_csv('prediction_prob.tsv',  sep = "\t", index = False)
-
-
-df = pd.DataFrame(labels[y_pred])
-df.to_csv('prediction.tsv',  sep = "\t", index = False)
+for i in range(3, len(model.layers) - 1):
+  new_model = Model(inputs=model.input, outputs=model.layers[i].output)
+  Y_pred = new_model.predict(methy)
+  df = pd.DataFrame(Y_pred)
+  df.to_csv(model.layers[i].name + '.tsv',  sep = "\t", index = False)

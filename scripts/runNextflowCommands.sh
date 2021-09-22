@@ -32,7 +32,12 @@ nextflow run workflows/train_model_gse84727.nf  --hdf5_prefix GSE84727_raw \
 ## Apply model in GSE97362 data
 nextflow run workflows/train_model_gse97362.nf  --hdf5_prefix GSE97362_raw \
 --hdf5_dir data/GSE97362/ --input_probes results/preprocess/GEO_ref_blood/2021-06-11/cpg_medians.Rdata \
---trained_model results/GEOrefblood_model//2021-06-11/model.pb -profile docker -resume
+--trained_model results/GEOrefblood_model/2021-07-15/model.pb -profile docker -resume
+
+nextflow run workflows/train_model_gse97362.nf  --hdf5_prefix GSE97362_raw \
+--hdf5_dir data/GSE97362/ --input_probes --input_probes results/preprocess_tcga/2021-05-17/cpg_medians.Rdata \
+--fname gse97362_tcga --trained_model results/tcga_model/2021-07-19/model.pb -profile docker -resume
+
 
 ## Retrain model in GSE97362 data
 nextflow run workflows/train_model_gse97362.nf  --hdf5_prefix GSE97362_raw \

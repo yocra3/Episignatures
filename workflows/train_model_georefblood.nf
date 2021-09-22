@@ -35,9 +35,9 @@ workflow  {
 
   PY_DIVIDE_TRAIN_TEST ( ch_hdf5, 0.2 )
 
-  RANDOM_SEARCH_2DNN( PY_DIVIDE_TRAIN_TEST.out.train.collect(), ch_round1.collect())
+//  RANDOM_SEARCH_2DNN( PY_DIVIDE_TRAIN_TEST.out.train.collect(), ch_round1.collect())
 
-//  TRAIN_TCGA( ch_hdf5, PY_DIVIDE_TRAIN_TEST.out.train, PY_DIVIDE_TRAIN_TEST.out.test, ch_network1, 'model3' )
-//  PY_EXPORT_RESULTS( ch_hdf5, TRAIN_TCGA.out.history, TRAIN_TCGA.out.model, PY_DIVIDE_TRAIN_TEST.out.test )
+  TRAIN_TCGA( ch_hdf5, PY_DIVIDE_TRAIN_TEST.out.train, PY_DIVIDE_TRAIN_TEST.out.test, ch_network1, 'model3' )
+  PY_EXPORT_RESULTS( ch_hdf5, TRAIN_TCGA.out.history, TRAIN_TCGA.out.model, PY_DIVIDE_TRAIN_TEST.out.test )
 
 }

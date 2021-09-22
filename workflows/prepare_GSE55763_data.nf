@@ -20,11 +20,13 @@ include { R_SELECT_AUTOSOMICCPG_HDF5 } from '../modules/local/r_select_autosomic
 include { R_SUBSTITUE_MISSING_HDF5 } from '../modules/local/r_substitue_missing_hdf5/main.nf' addParams( options: [publish_files : ['s':'']])
 include { R_CPGS_MEDIANS } from '../modules/local/r_cpgs_medians/main.nf' addParams( options: [publish_dir: "preprocess/GSE55763/${date}"])
 include { R_WRITE_TCGA_LABELS } from '../modules/local/r_write_tcga_labels/main.nf' addParams( options: [publish_files : ['s':'']])
+include { R_CONVERT2D_HDF5 } from '../modules/local/r_convert2D_hdf5/main.nf' addParams( options: [publish_files : ['s':'']])
 
 include { PY_RESHAPE_HDF5 } from '../modules/local/py_reshape_hdf5/main.nf' addParams( options: [publish_dir: "preprocess/GSE55763/${date}"])
+include { PY_RESHAPE_HDF5_2D } from '../modules/local/py_reshape_hdf5_2D/main.nf' addParams( options: [publish_dir: "preprocess/GSE55763/${date}"])
 
 
-workflow  {
+workflow conv1D  {
 
   R_SELECT_AUTOSOMICCPG_HDF5( ch_hdf5.collect() )
   R_FILTER_MISSINGS_HDF5( R_SELECT_AUTOSOMICCPG_HDF5.out )
@@ -34,4 +36,21 @@ workflow  {
   R_WRITE_TCGA_LABELS( ch_hdf5.collect() )
 
   PY_RESHAPE_HDF5( R_SUBSTITUE_MISSING_HDF5.out.h5, R_WRITE_TCGA_LABELS.out )
+}
+
+workflow conv2D  {
+
+  R_SELECT_AUTOSOMICCPG_HDF5( ch_hdf5.collect() )
+  R_FILTER_MISSINGS_HDF5( R_SELECT_AUTOSOMICCPG_HDF5.out )
+  R_CONVERT2D_HDF5( R_FILTER_MISSINGS_HDF5.out )
+
+  R_CPGS_MEDIANS( R_FILTER_MISSINGS_HDF5.out.res )
+  R_WRITE_TCGA_LABELS( ch_hdf5.collect() )
+
+  PY_RESHAPE_HDF5_2D( R_CONVERT2D_HDF5.out.res, R_WRITE_TCGA_LABELS.out )
+}
+
+workflow {
+
+  conv2D()
 }

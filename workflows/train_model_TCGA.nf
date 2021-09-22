@@ -31,14 +31,16 @@ include { RANDOM_SEARCH } from '../modules/local/random_search/main.nf' addParam
 include { RANDOM_SEARCH  as RANDOM_SEARCH2 } from '../modules/local/random_search/main.nf' addParams( options: [publish_dir: "tcga_model/${date}"])
 include { TRAIN_TCGA } from '../modules/local/train_tcga/main.nf' addParams( options: [publish_dir: "tcga_model/${date}"])
 include { PY_EXPORT_RESULTS } from '../modules/local/py_export_results/main.nf' addParams( options: [publish_dir: "tcga_model/${date}"])
+include { EXTRACT_MODEL_FEATURES } from '../modules/local/extract_model_features/main.nf' addParams( options: [publish_dir: "tcga_model/${date}"])
 
 workflow  {
 
   PY_DIVIDE_TRAIN_TEST ( ch_hdf5, 0.2 )
 
-  RANDOM_SEARCH( PY_DIVIDE_TRAIN_TEST.out.train.collect(), ch_random)
+  //RANDOM_SEARCH( PY_DIVIDE_TRAIN_TEST.out.train.collect(), ch_random)
 
   TRAIN_TCGA( ch_hdf5, PY_DIVIDE_TRAIN_TEST.out.train, PY_DIVIDE_TRAIN_TEST.out.test, ch_network1, 'model2' )
   PY_EXPORT_RESULTS( ch_hdf5, TRAIN_TCGA.out.history, TRAIN_TCGA.out.model, PY_DIVIDE_TRAIN_TEST.out.test )
+  EXTRACT_MODEL_FEATURES( TRAIN_TCGA.out.model, ch_hdf5 )
 
 }
