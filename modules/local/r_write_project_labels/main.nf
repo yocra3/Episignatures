@@ -4,24 +4,23 @@ include { initOptions; saveFiles; getSoftwareName } from './functions'
 params.options = [:]
 options        = initOptions(params.options)
 
-process EXTRACT_MODEL_FEATURES {
+process R_WRITE_PROJECT_LABELS {
 
-    label 'process_high'
+    label 'process_low'
     publishDir "${params.outdir}",
         mode: params.publish_dir_mode,
         saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
 
-    container 'yocra3/episignatures_python:1.3'
+    container 'yocra3/episignatures_rsession:1.0'
 
     input:
-    path('assay_reshaped.h5')
-    path('model/')
+    tuple val(prefix), path(hdf5), path(rds)
 
     output:
-    path("*.tsv"), emit: res
+    path "*_labels.txt", emit: res
 
     script:
     """
-    extract_features.py
+    write_project_labels.R $hdf5
     """
 }

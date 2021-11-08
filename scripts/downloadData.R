@@ -62,7 +62,7 @@ a <- lapply(prefixes, function(x){
 } )
 
 
-## Generate final SE
+## Generate final SE  ####
 tcgaSE <-loadHDF5SummarizedExperiment(dir = "data/tcga_hdf5/tmp/", prefix = "tcga33_")
 tcgaSE$project <- colData(tcgaSE) %>%
   data.frame() %>%
@@ -71,11 +71,15 @@ tcgaSE$project <- colData(tcgaSE) %>%
   .$project
 saveHDF5SummarizedExperiment(tcgaSE, "data/tcga_hdf5", prefix = "methyTCGA_")
 
-## Filter CpGs with all missings
+## Filter CpGs with all missings  ####
 pNA <- rowMeans(is.na(assay(tcgaSE)))
 tcgaSE.filt <- tcgaSE[pNA < 0.9, ]
 saveHDF5SummarizedExperiment(tcgaSE.filt, "data/tcga_hdf5", prefix = "methyTCGAfilt_")
 
+## Create mini dataset for debugging ####
+tcgaSE <-loadHDF5SummarizedExperiment(dir = "data/tcga_hdf5", prefix = "methyTCGAfilt_")
+tcgaSE.mini <- tcgaSE[, c(1:10, 1001:1010)]
+saveHDF5SummarizedExperiment(tcgaSE.mini, "data/tcga_hdf5", prefix = "testTCGA_")
 
 ## Play with data
 library(DelayedMatrixStats)

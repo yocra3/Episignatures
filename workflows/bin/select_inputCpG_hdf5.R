@@ -7,8 +7,10 @@
 
 ## Capture arguments
 args <- commandArgs(trailingOnly=TRUE)
-setPrefix <- args[1]
+h5n <- args[1]
 probes_path <- args[2]
+
+setPrefix <- gsub("assays.h5", "", h5n)
 
 ## Load libraries
 library(DelayedMatrixStats)

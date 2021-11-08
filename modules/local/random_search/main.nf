@@ -6,20 +6,23 @@ options        = initOptions(params.options)
 
 process RANDOM_SEARCH {
 
-    tag "$round"
+    tag "$name"
 
-    label 'process_high'
+    label 'high_memory'
+    label 'medium_cpus'
     label 'process_long'
 
     publishDir "${params.outdir}",
         mode: params.publish_dir_mode,
         saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
 
-    container 'yocra3/episignatures_python:1.0'
+    container 'yocra3/episignatures_python:1.3'
 
     input:
     path('input.pb')
-    tuple val(round), path('randomconfig.py')
+    path('model.py')
+    path('randomconfig.py')
+    val(name)
 
 
     output:
@@ -28,6 +31,6 @@ process RANDOM_SEARCH {
 
     script:
     """
-    randomSearchCV.py randomconfig.py $round
+    randomSearchCV.py $name $task.cpus
     """
 }

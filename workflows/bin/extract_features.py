@@ -1,8 +1,8 @@
-#! /opt/conda/envs/episignatures/bin/python
+#! /usr/local/bin/python
 
 #'#################################################################################
 #'#################################################################################
-#'  Train TCGA network
+#'  Extract features from network
 #'#################################################################################
 #'#################################################################################
 
@@ -15,21 +15,17 @@ import scipy
 import functools
 import operator
 import pandas as pd
+import tensorflow as tf
+import os
 
 from numpy import array, argmax
-from keras.models import Sequential, Model
-from keras.layers import Conv1D, MaxPooling1D, Dense, Dropout, Activation, Flatten, Input
-from keras.wrappers.scikit_learn import KerasClassifier
-from keras.callbacks import EarlyStopping, ModelCheckpoint
+from tensorflow.keras.models import Sequential, Model
 
 f = h5py.File('./assay_reshaped.h5', 'r')
 methy = f['methy'][...]
 f.close()
 
-
-A = open('model.pb', 'rb')
-[model, labels] = pickle.load(A)
-A.close()
+model = tf.keras.models.load_model('model/' + os.listdir('model/')[0]) 
 
 for i in range(3, len(model.layers) - 1):
   new_model = Model(inputs=model.input, outputs=model.layers[i].output)

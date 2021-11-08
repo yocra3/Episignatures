@@ -11,8 +11,10 @@ dependencies:
   - conda-forge::pymdown-extensions
   - conda-forge::pygments
   - anaconda::h5py
+  - conda-forge::protobuf=3.18.1
   - conda-forge::numpy
   - conda-forge::scikit-learn
   - conda-forge::matplotlib
   - conda-forge::pandas
-  - conda-forge::keras
+  - conda-forge::keras=2.6.0
+  - conda-forge::tensorflow

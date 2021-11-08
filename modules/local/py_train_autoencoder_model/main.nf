@@ -4,9 +4,12 @@ include { initOptions; saveFiles; getSoftwareName } from './functions'
 params.options = [:]
 options        = initOptions(params.options)
 
-process EXTRACT_MODEL_FEATURES {
+process TRAIN_AUTOENCODER_MODEL {
 
-    label 'process_high'
+    label 'medium_memory'
+    label 'high_cpus'
+    label 'process_long'
+
     publishDir "${params.outdir}",
         mode: params.publish_dir_mode,
         saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
@@ -14,14 +17,19 @@ process EXTRACT_MODEL_FEATURES {
     container 'yocra3/episignatures_python:1.3'
 
     input:
-    path('assay_reshaped.h5')
+    path('train.pb')
+    path('test.pb')
     path('model/')
+    val(name)
 
     output:
-    path("*.tsv"), emit: res
+    path("*autoencode_history_model.pb"), emit: old_history
+    path("*autoencoder_history_model.pb"), emit: auto_history
+    path("*_with_autoencode"), emit: model_old
+    path("*_autoencoder"), emit: model_auto
 
     script:
     """
-    extract_features.py
+    train_autoencoder.py $name $task.cpus
     """
 }

@@ -4,23 +4,33 @@ include { initOptions; saveFiles; getSoftwareName } from './functions'
 params.options = [:]
 options        = initOptions(params.options)
 
-process R_WRITE_TCGA_LABELS {
+process TRAIN_MODEL {
 
-    label 'process_low'
+    label 'medium_memory'
+    label 'high_cpus'
+    label 'process_long'
+
     publishDir "${params.outdir}",
         mode: params.publish_dir_mode,
         saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
 
-    container 'yocra3/episignatures_rsession:1.0'
+    container 'yocra3/episignatures_python:1.3'
 
     input:
-    tuple val(prefix), path(hdf5), path(rds)
+    path('assay_reshaped.h5')
+    path('train.pb')
+    path('test.pb')
+    path('model.py')
+    path('params.py')
+    val(name)
 
     output:
-    path "TCGA_individuals_cancer_labels.txt", emit: res
+    path("*history_model.pb"), emit: history
+    path("*labels.pb"), emit: labels
+    path(name), emit: model
 
     script:
     """
-    write_project_labels.R $prefix
+    train_model.py $name $task.cpus
     """
 }

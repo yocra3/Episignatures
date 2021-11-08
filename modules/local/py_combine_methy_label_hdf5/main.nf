@@ -4,7 +4,7 @@ include { initOptions; saveFiles; getSoftwareName } from './functions'
 params.options = [:]
 options        = initOptions(params.options)
 
-process EXTRACT_MODEL_FEATURES {
+process PY_COMBINE_METHY_LABEL_HDF5 {
 
     label 'process_high'
     publishDir "${params.outdir}",
@@ -14,14 +14,14 @@ process EXTRACT_MODEL_FEATURES {
     container 'yocra3/episignatures_python:1.3'
 
     input:
-    path('assay_reshaped.h5')
-    path('model/')
+    path('assays.h5')
+    path('labels.txt')
 
     output:
-    path("*.tsv"), emit: res
+    path("*.h5"), emit: assay
 
     script:
     """
-    extract_features.py
+    combine_methy_label_hdf5.py
     """
 }

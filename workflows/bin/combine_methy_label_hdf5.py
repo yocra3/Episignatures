@@ -2,7 +2,7 @@
 
 #'#################################################################################
 #'#################################################################################
-#' Reshape hdf5 data to add channel dimension
+#' Combine methy from hdf5 data and labels
 #'#################################################################################
 #'#################################################################################
 
@@ -12,7 +12,8 @@ from sklearn.preprocessing import LabelEncoder
 
 # Load and reshape data
 f = h5py.File('assays.h5', 'r')
-x_train = f['methy'][...]
+meth_matrix = f['assay001']
+x_train = meth_matrix[...]
 f.close()
 
 with open('labels.txt','r') as file:
@@ -27,7 +28,7 @@ label_int = label_encoder.fit_transform(project)
 
 # Save reshaped training data
 f = h5py.File('./assay_reshaped.h5', 'w')
-dataset_input = f.create_dataset('methy', (x_train.shape[0], x_train.shape[1], x_train.shape[2],  x_train.shape[3]))
+dataset_input = f.create_dataset('methy', (x_train.shape[0], x_train.shape[1]))
 dataset_label = f.create_dataset('label', (len(label_int),))
 dataset_input[...] = x_train
 dataset_label[...] = label_int

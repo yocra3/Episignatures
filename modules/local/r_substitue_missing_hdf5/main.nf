@@ -22,6 +22,6 @@ process R_SUBSTITUE_MISSING_HDF5 {
 
     script:
     """
-    substitute_missings.R $prefix
+    substitute_missings.R $hdf5
     """
 }

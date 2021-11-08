@@ -23,6 +23,6 @@ process R_SELECT_INPUTCPG_HDF5 {
 
     script:
     """
-    select_inputCpG_hdf5.R $prefix $input_probes
+    select_inputCpG_hdf5.R $hdf5 $input_probes
     """
 }

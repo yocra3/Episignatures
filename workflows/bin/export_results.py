@@ -1,4 +1,4 @@
-#! /opt/conda/envs/episignatures/bin/python
+#! /usr/local/bin/python
 
 #'#################################################################################
 #'#################################################################################
@@ -8,11 +8,14 @@
 
 
 import pickle
+import os
 import csv
 import numpy as np
 import sys
 import pandas as pd
 import h5py
+import tensorflow as tf
+
 
 from tensorflow.keras.models import Sequential
 from keras.callbacks import EarlyStopping, ModelCheckpoint
@@ -22,6 +25,9 @@ from keras.wrappers.scikit_learn import KerasClassifier
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from sklearn.metrics import confusion_matrix, classification_report
 
+name = sys.argv[1]
+
+model = tf.keras.models.load_model('model/' + os.listdir('model/')[0]) 
 
 f = h5py.File('assay_reshaped.h5', 'r')
 proj_labels = f['label'].attrs['labels']
@@ -32,15 +38,15 @@ A = open('history_model.pb', 'rb')
 history = pickle.load(A)
 A.close()
 
-A = open('model.pb', 'rb')
-[model, labels] = pickle.load(A)
+A = open('labels.pb', 'rb')
+labels = pickle.load(A)
 A.close()
 
 A = open('test.pb', 'rb')
 [x_test, y_test] = pickle.load(A)
 A.close()
 
-with open('training_evaluation.tsv', 'w') as csv_file:
+with open(name + '_training_evaluation.tsv', 'w') as csv_file:
     writer = csv.writer(csv_file, delimiter = '\t', escapechar=' ', quoting = csv.QUOTE_NONE)
     for key, value in history.items():
        writer.writerow([key + '\t' + '\t'.join([str(item) for item in value ])])
@@ -52,15 +58,15 @@ y_class = np.argmax(y_test, axis=1)
 
 cm = confusion_matrix(y_class, y_pred)
 df = pd.DataFrame(cm, columns = proj_labels)
-df.to_csv('confussionMatrix.tsv',  sep = "\t", index = False)
+df.to_csv(name + '_confussionMatrix.tsv',  sep = "\t", index = False)
 
 cr = classification_report(y_class, y_pred, target_names=proj_labels)
-text_file = open("classificationReport.txt", "w")
+text_file = open(name + "_classificationReport.txt", "w")
 text_file.write(cr)
 text_file.close()
 
 d = {'Real': labels[y_class], 'Predicted': labels[y_pred]}
 df = pd.DataFrame(data = d )
-df.to_csv('prediction.tsv',  sep = "\t", index = False)
+df.to_csv(name + '_prediction.tsv',  sep = "\t", index = False)
 
 
