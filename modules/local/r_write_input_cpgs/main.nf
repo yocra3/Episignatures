@@ -11,7 +11,7 @@ process R_WRITE_INPUT_CPGS {
         mode: params.publish_dir_mode,
         saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
 
-    container 'yocra3/episignatures_rsession:1.0'
+    container 'yocra3/episignatures_rsession:1.1'
 
     input:
     tuple val(prefix), path(hdf5), path(rds)
@@ -21,6 +21,6 @@ process R_WRITE_INPUT_CPGS {
 
     script:
     """
-    write_input_CpGs.R $prefix
+    write_input_CpGs.R $hdf5
     """
 }

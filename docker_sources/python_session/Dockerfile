@@ -1,4 +1,4 @@
-FROM tensorflow/tensorflow:2.6.0
+FROM tensorflow/tensorflow:2.7.0-gpu
 LABEL authors="Carlos Ruiz-Arenas" \
       description="Docker image containing the python packages for Episignatures project"
 

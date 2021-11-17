@@ -7,7 +7,8 @@
 
 ## Capture arguments
 args <- commandArgs(trailingOnly=TRUE)
-setPrefix <- args[1]
+h5n <- args[1]
+setPrefix <- gsub("assays.h5", "", h5n)
 
 ## Load libraries
 library(HDF5Array)

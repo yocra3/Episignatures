@@ -9,7 +9,9 @@
 
 ## Capture arguments
 args <- commandArgs(trailingOnly=TRUE)
-setPrefix <- args[1]
+h5n <- args[1]
+prefix <- args[2]
+setPrefix <- gsub("assays.h5", "", h5n)
 
 ## Load libraries
 library(DelayedMatrixStats)
@@ -23,9 +25,9 @@ SE <- SE[grep("cg", rownames(SE)), ]
 
 ## Filter CpGs with all missings
 pNA <- rowMeans(is.na(assay(SE)))
-SE <- SE[pNA < 0.9, ]
+SE <- SE[pNA < 0.8, ]
 
 ## sort SE by GenomicCoordinates
 SE <- sort(SE)
-saveHDF5SummarizedExperiment(SE, ".", prefix = paste0(setPrefix, "probesFilt_"))
+saveHDF5SummarizedExperiment(SE, ".", prefix = paste0(prefix, "probesFilt_"))
 

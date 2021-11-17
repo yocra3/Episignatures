@@ -6,15 +6,14 @@ options        = initOptions(params.options)
 
 process TRAIN_MODEL {
 
-    label 'medium_memory'
-    label 'high_cpus'
-    label 'process_long'
+    label 'memory_medium'
+    label 'gpu'
 
     publishDir "${params.outdir}",
         mode: params.publish_dir_mode,
         saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
 
-    container 'yocra3/episignatures_python:1.3'
+    container 'yocra3/episignatures_python:1.4'
 
     input:
     path('assay_reshaped.h5')

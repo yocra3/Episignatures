@@ -13,7 +13,7 @@ process R_CONVERT2D_HDF5 {
         mode: params.publish_dir_mode,
         saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
 
-    container 'yocra3/episignatures_rsession:1.0'
+    container 'yocra3/episignatures_rsession:1.1'
 
     input:
     tuple val(prefix), path(hdf5), path(rds)

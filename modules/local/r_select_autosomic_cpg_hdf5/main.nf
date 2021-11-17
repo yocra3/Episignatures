@@ -6,12 +6,12 @@ options        = initOptions(params.options)
 
 process R_SELECT_AUTOSOMICCPG_HDF5 {
 
-    label 'process_medium'
+    label 'memory_medium'
     publishDir "${params.outdir}",
         mode: params.publish_dir_mode,
         saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
 
-    container 'yocra3/episignatures_rsession:1.0'
+    container 'yocra3/episignatures_rsession:1.1'
 
     input:
     tuple val(prefix), path(hdf5), path(rds)
@@ -21,6 +21,6 @@ process R_SELECT_AUTOSOMICCPG_HDF5 {
 
     script:
     """
-    select_autosomicCpG_hdf5.R $prefix
+    select_autosomicCpG_hdf5.R $hdf5 $prefix
     """
 }

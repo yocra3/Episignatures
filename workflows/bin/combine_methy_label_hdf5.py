@@ -20,6 +20,8 @@ with open('labels.txt','r') as file:
     project = file.read()
 project = project.split('\n')[0:-1]
 
+
+
 ## Convert labels to integers labels
 # integer encode
 label_encoder = LabelEncoder()

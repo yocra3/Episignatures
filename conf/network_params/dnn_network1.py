@@ -4,9 +4,9 @@
 ##################################################################################
 ##################################################################################
 
-from keras.models import Sequential, Model
-from keras.layers import Dense, Input
-from keras.optimizers import Adam
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import Dense, Input
+from tensorflow.keras.optimizers import Adam
 
 def model_generator(x_train, y_train):
     ## Define function to be passed
@@ -41,3 +41,5 @@ def model_generator_train(x_train, y_train, params):
     optimizer = opt,
     metrics = ['accuracy'])
   return model
+
+

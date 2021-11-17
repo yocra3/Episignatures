@@ -1,4 +1,4 @@
-docker run -v $PWD:$PWD -it  yocra3/episignatures_python:1.3
+docker run -v $PWD:$PWD -it  yocra3/episignatures_python:1.4
 
 ## marvin
 srun --mem 256Gb --pty bash   

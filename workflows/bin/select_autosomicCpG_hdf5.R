@@ -7,7 +7,9 @@
 
 ## Capture arguments
 args <- commandArgs(trailingOnly=TRUE)
-setPrefix <- args[1]
+h5n <- args[1]
+prefix <- args[2]
+setPrefix <- gsub("assays.h5", "", h5n)
 
 ## Load libraries
 library(DelayedMatrixStats)
@@ -18,4 +20,4 @@ SE <- loadHDF5SummarizedExperiment(dir = "./", prefix = setPrefix)
 
 SE <- SE[seqnames(rowRanges(SE)) %in% c(1:22, paste0("chr", 1:22)), ]
 
-saveHDF5SummarizedExperiment(SE, ".", prefix = paste0(setPrefix, "autosomicProbes_"))
+saveHDF5SummarizedExperiment(SE, ".", prefix = paste0(prefix, "autosomicProbes_"))

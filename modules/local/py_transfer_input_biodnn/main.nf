@@ -4,9 +4,9 @@ include { initOptions; saveFiles; getSoftwareName } from './functions'
 params.options = [:]
 options        = initOptions(params.options)
 
-process RUN_MODEL {
+process PY_TRANSFER_INPUT_BIODNN {
 
-    label 'process_high'
+    label 'memory_medium'
     publishDir "${params.outdir}",
         mode: params.publish_dir_mode,
         saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
@@ -14,15 +14,15 @@ process RUN_MODEL {
     container 'yocra3/episignatures_python:1.4'
 
     input:
-    path('model.pb')
-    path('assay_reshaped.h5')
-
+    path('assays.h5')
+    path('input_cpgs.pb')
+    path('input_cpgs.txt')
 
     output:
-    path("*.tsv"), emit: res
+    path("input_list.pb"), emit: input
 
     script:
     """
-    run_model.py
+    transfer_input_biodnn.py
     """
 }
