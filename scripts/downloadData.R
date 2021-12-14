@@ -81,6 +81,18 @@ tcgaSE <-loadHDF5SummarizedExperiment(dir = "data/tcga_hdf5", prefix = "methyTCG
 tcgaSE.mini <- tcgaSE[, c(1:10, 1001:1010)]
 saveHDF5SummarizedExperiment(tcgaSE.mini, "data/tcga_hdf5", prefix = "testTCGA_")
 
+## Expression data ####
+querye <- GDCquery(project = projects,
+                  data.category = "Transcriptome Profiling",
+                  legacy = FALSE,
+                  workflow.type = "HTSeq - Counts"
+)
+GDCdownload(querye, method = "api", files.per.chunk = 10)
+gexp_tcga <- GDCprepare(querye)
+save(gexp_tcga, file = "data/tcga_gexp.Rdata")
+
+
+
 ## Play with data
 library(DelayedMatrixStats)
 library(BiocSingular)
