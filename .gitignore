@@ -42,7 +42,7 @@ vignettes/*.pdf
 .Renviron
 
 # Nextflow files
-*nextflow*
+.nextflow*
 
 # Report files
 *.html
