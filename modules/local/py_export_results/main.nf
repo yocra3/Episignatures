@@ -20,13 +20,13 @@ process PY_EXPORT_RESULTS {
     path('labels.pb')
     path('test.pb')
     val(name)
+    val(autoencoder)
 
     output:
-    path("*.tsv"), emit: tsv
     path("*.txt"), emit: txt
 
     script:
     """
-    export_results.py $name
+    export_results.py $name $autoencoder
     """
 }

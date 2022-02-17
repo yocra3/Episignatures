@@ -1,0 +1,7 @@
+## Params for dnn pathway v3 - network1
+alpha = 0.001
+epochs = 30
+batch_size = 128
+activation = 'elu'
+epochs_prime = 2
+alpha_prime = 0.001

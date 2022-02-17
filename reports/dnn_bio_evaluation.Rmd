@@ -6,6 +6,7 @@ output:
   html_document:
     toc: true
     theme: united
+    toc_float: true
 ---
 
 ```{r setup, include=FALSE}
@@ -24,6 +25,8 @@ library(limma)
 library(pheatmap)
 library(e1071)
 library(meffil)
+library(smotefamily)
+library(knitr)
 ```
 
 # Initial dataset
@@ -167,11 +170,11 @@ all_mat <- data.matrix(t(assay(se[sel_cpgs_vec, ])))
 imp_mat <- meffil:::impute.matrix(all_mat, margin = 2, fun = function(x) median(x, na.rm = T))
 
 pred_cpgs <- predict(svm_cpgs, imp_mat)
-table(pred_cpgs, se$disease)
+table(pred_cpgs, se$disease,se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
 
 ```
 
-The SVM model achieved a very high accuracy. Only one control samples was mislabelled and identified as CHARGE. From the individuals with candidate pathogenic variants, all but 3 were classified under their right disease. 3 individuals with CHD7 variant were classified as control, but we cannot state whether they are a classification error or whether these individuals do not have the pathogenic methylation pattern.
+The SVM model achieved a very high accuracy. Only one control samples was mislabelled and identified as CHARGE. From the individuals with candidate pathogenic variants, all but 3 were classified under their right disease. 3 individuals with CHD7 variant were classified as control.
 
 
 # Dataset passed to network
@@ -181,7 +184,7 @@ The SVM model achieved a very high accuracy. Only one control samples was mislab
 We explored whether we obtained the same results with the data after preprocessing for applying CNN model. 
 
 ```{r}
-se_filt <- loadHDF5SummarizedExperiment("../results/preprocess/GSE97362_DNN/2021-11-16/", prefix = "GSE97362_DNNmissingSub_inputProbes_")
+se_filt <- loadHDF5SummarizedExperiment("../results/preprocess/GSE97362/2021-11-18/", prefix = "GSE97362missingSub_inputProbes_")
 se_filt$disease <- factor(se_filt$`disease state:ch1`, levels = c("Control", "CHARGE", "Kabuki",  "CHD7 variant","KMT2D variant"))
 se_filt$sex <- ifelse(se_filt$characteristics_ch1 == "gender: female", "female", "male")
 se_filt$age <- as.numeric(gsub("age (years): ", "", se_filt$characteristics_ch1.1, fixed = TRUE ))
@@ -251,7 +254,7 @@ pheatmap(assay(discov_filt)[sel_cpgs_filt_vec, ], scale = "none",
 
 ```
 
-The heatmap shows that when including only these selected CpGs, control and case samples are clearly separated in the discovery dataset (dataset used for defining the CpGs). Nonetheless, we case samples are split in different groups.
+The heatmap shows that when including only these selected CpGs, control and case samples are clearly separated in the discovery dataset (dataset used for defining the CpGs). 
 
 ```{r}
 pheatmap(assay(val_filt)[sel_cpgs_filt_vec, ], scale = "none", 
@@ -267,18 +270,21 @@ When selecting the same CpGs in the validation dataset, we observe that samples 
 ```{r}
 svm_cpgs_filt <- trainSVM(set = discov_filt, feats = sel_cpgs_filt_vec)
 pred_cpgs_filt <- predict(svm_cpgs_filt, t(assay(se_filt[sel_cpgs_filt_vec, ])))
-table(pred_cpgs_filt, se_filt$disease)
+table(pred_cpgs_filt, se_filt$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
 
 ```
 
 After preprocessing, one control sample was classified as CHARGE. For the rest, we acheived a high accuracy. Therefore, the preprocessing is not affecting the signal.
 
-# DNN model
+# DNN model1
 
 ## Description
 
 We train a DNN model in TCGA whose goal was to classify samples into their tumor subtype, including all control tissues as one category. The input contained 9813 samples (80% training/20% test) and the 394,363 CpGs with variability in TCGA. Then, the model had the following layers:
 
+```{r}
+dnn_fold <- "../results/GSE97362/2021-11-17/model_features/bioDNN_v1/"
+```
 
 ## First layer
 
@@ -289,7 +295,7 @@ This layer contains the results from the different genes and groups of CpGs from
 We first evaluated whether the output of the first layer still contained signal to differentiate the individuals by disease.
 
 ```{r}
-dnn1_conc <- read_delim("../results/GSE97362_DNN/2021-11-16/model_features/v1/concatenate.tsv", delim = "\t")
+dnn1_conc <- read_delim(paste0(dnn_fold, "concatenate.tsv"), delim = "\t")
 dnn1_conc <- data.matrix(dnn1_conc)
 
 dnn1_conc_se <- SummarizedExperiment(t(dnn1_conc), colData = colData(se))
@@ -299,7 +305,7 @@ discov_dnn1_conc <- dnn1_conc_se[, ! dnn1_conc_se$`sample type:ch1`  %in% c("Con
 valid_dnn1_conc <- dnn1_conc_se[, dnn1_conc_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
 ```
 
-We obtained `r nrow(dnn1_conc_se)` features from the CNN layer. Of those, `r sum(!apply(dnn1_conc, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
+We obtained `r nrow(dnn1_conc_se)` features from the first DNN layer. Of those, `r sum(!apply(dnn1_conc, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
 
 ```{r}
 pc_dnn1_conc <- prcomp(dnn1_conc)$x %>%
@@ -317,17 +323,17 @@ pc_dnn1_conc %>%
   ggtitle("DNN model layer 1 features - Disease")
 ```
 
-The top 2 PCs of layer 1 features from DNN model does not allow differentiating the cases from the the control individuals.
+The second PC of layer 1 features from DNN model allows us differentiating CHARGE cases from control individuals.
 
 ```{r}
 pc_dnn1_conc %>% 
-  ggplot(aes(x = PC3, y = PC5, color = disease)) +
+  ggplot(aes(x = PC2, y = PC4, color = disease)) +
   geom_point() + 
   theme_bw() +
   ggtitle("DNN model layer 1 features - Disease")
 ```
 
-Components PC3 and PC5 of layer 1 features from DNN model  separate samples by disease type. 
+Components PC2 and PC4 of layer 1 features from DNN model  separate samples by disease type. 
 
 ```{r}
 pc_dnn1_conc %>% 
@@ -367,7 +373,7 @@ pheatmap(assay(valid_dnn1_conc)[sel_dnn1_conc_vec, ], scale = "none",
          show_rownames = FALSE)
 ```
 
-Individuals are clustered by sex and then by disease.
+Individuals are clustered by disease.
 
 ### SVM training
 
@@ -375,7 +381,7 @@ Individuals are clustered by sex and then by disease.
 svm_dnn1_conc <- trainSVM(set = discov_dnn1_conc, feats = sel_dnn1_conc_vec)
 
 pred_dnn1_conc <- predict(svm_dnn1_conc, t(assay(dnn1_conc_se)))
-table(pred_dnn1_conc, se$disease)
+table(pred_dnn1_conc, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
 
 ```
 
@@ -390,7 +396,7 @@ Summary: The first layer of the DNN network have reduced the differences between
 We evaluated whether the output of the dense 1 layer still contained signal to differentiate the individuals by disease.
 
 ```{r}
-dnn1_dense1 <- read_delim("../results/GSE97362_DNN/2021-11-16/model_features/v1/dense.tsv", delim = "\t")
+dnn1_dense1 <- read_delim(paste0(dnn_fold, "dense.tsv"), delim = "\t")
 dnn1_dense1 <- data.matrix(dnn1_dense1)
 
 dnn1_dense1_se <- SummarizedExperiment(t(dnn1_dense1), colData = colData(se))
@@ -435,7 +441,7 @@ pc_dnn1_dense1 %>%
   ggplot(aes(x = PC1, y = PC2, color = sex)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("CNN model dense1 features - Sex")
+  ggtitle("DNN1 model dense1 features - Sex")
 ```
 
 The first component is not separating sample by sex. 
@@ -481,20 +487,20 @@ We repeated the SVM with the features selected in the previous step.
 svm_dnn1_dense1 <- trainSVM(set = discov_dnn1_dense1, feats = sel_dnn1_dense1_vec)
 
 pred_dnn1_dense1 <- predict(svm_dnn1_dense1, t(assay(dnn1_dense1_se)))
-table(pred_dnn1_dense1, se$disease)
+table(pred_dnn1_dense1, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
 
 ```
 
-The SVM model can identify case samples but confuse some controls with case samples. The performance is still good for samples with variants.
+The SVM model can identify case samples but confuse some controls with case samples. The performance is still good for samples with CHARGE variants.
 
 ```{r}
 svm_dnn1_dense1b <- trainSVM(set = discov_dnn1_dense1, feats = rownames(dnn1_dense1_se)[!apply(dnn1_dense1, 2, function(x) all(x == 0))])
 
 pred_dnn1_dense1b <- predict(svm_dnn1_dense1b, t(assay(dnn1_dense1_se)))
-table(pred_dnn1_dense1b, se$disease)
+table(pred_dnn1_dense1b, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
 ```
 
-When using all the features with values different than 0, we are able to classify half of the case samples.`
+When using all the features with values different than 0, we are able to classify half of the CHARGE samples with variants but not Kabuki.
 
 Summary: The dense 1 layer still contains some information to differentiate cases and controls.
 
@@ -505,7 +511,7 @@ Summary: The dense 1 layer still contains some information to differentiate case
 We evaluated whether the output of the dense 2 layer still contained signal to differentiate the individuals by disease.
 
 ```{r}
-dnn1_dense2 <- read_delim("../results/GSE97362_DNN/2021-11-16/model_features/v1/dense_1.tsv", delim = "\t")
+dnn1_dense2 <- read_delim(paste0(dnn_fold, "dense_1.tsv"), delim = "\t")
 dnn1_dense2 <- data.matrix(dnn1_dense2)
 
 dnn1_dense2_se <- SummarizedExperiment(t(dnn1_dense2), colData = colData(se))
@@ -555,7 +561,7 @@ pc_dnn1_dense2 %>%
 
 The first component is not separating sample by sex. 
 
-Summary: the features computed by the DNN model dense1 layer are capturing the difference in methylation due to disease rather than to sex.
+Summary: the features computed by the DNN model dense2 layer are capturing the difference in methylation due to disease rather than to sex.
 
 ### Heatmaps
 
@@ -574,7 +580,7 @@ pheatmap(assay(discov_dnn1_dense2)[sel_dnn1_dense2_vec, ], scale = "none",
 
 ```
 
-There are some cluster of case samples but they are not separated from controls.
+There are some cluster of case samples but they are not clearly separated from controls.
 ```{r}
 pheatmap(assay(valid_dnn1_dense2)[sel_dnn1_dense2_vec, ], scale = "none", 
          annotation_col  = data.frame(colData(valid_dnn1_dense2)[, c("disease", "sex"), drop = FALSE]),
@@ -593,236 +599,283 @@ We repeated the SVM with all the features from dense 2 different than 0.
 svm_dnn1_dense2 <- trainSVM(set = discov_dnn1_dense2, feats = sel_dnn1_dense2_vec)
 
 pred_dnn1_dense2 <- predict(svm_dnn1_dense2, t(assay(dnn1_dense2_se)))
-table(pred_dnn1_dense2, se$disease)
+table(pred_dnn1_dense2, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
 
 ```
 
-The predicition is very poor. It only worked for some CHARGE samples. 
+The SVM is struggling to differentiate the case samples even in the training set. Nonetheless, CHARGE samples with variants are correctly classified. 
 
 Summary: The dense 2 layer still contain some information to differentiate cases and controls, although it might not be enough for correctly distinguish the individuals.
 
-# CNN+auto model
+```{r}
+discov_dnn1_dense2_df <- data.frame(t(assay(discov_dnn1_dense2[sel_dnn1_dense2_vec, ])))
+discov_dnn1_dense2_df$class <- as.character(discov_dnn1_dense2$disease)
+smoteKab <- SMOTE(discov_dnn1_dense2_df[discov_dnn1_dense2_df$class != "CHARGE", -ncol(discov_dnn1_dense2_df) ], discov_dnn1_dense2_df$class[discov_dnn1_dense2_df$class != "CHARGE"] )
+
+smoteCharge <- SMOTE(discov_dnn1_dense2_df[discov_dnn1_dense2_df$class != "Kabuki", -ncol(discov_dnn1_dense2_df) ], discov_dnn1_dense2_df$class[discov_dnn1_dense2_df$class != "Kabuki"] )
+
+mixTab <- rbind(smoteCharge$syn_data, smoteKab$syn_data, discov_dnn1_dense2_df)
+
+
+svm_dnn1_dense2_smote <- svm(factor(class) ~ ., data = mixTab)
+pred_dnn1_dense2_smote <- predict(svm_dnn1_dense2_smote, t(assay(dnn1_dense2_se)))
+table(pred_dnn1_dense2_smote, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
+
+```
+
+Increase the sample size with SMOTE is reducing the capability of detecting controls.
+
+## TCGA data
+
+We explored the features generated by the DNN1 model in the original TCGA data.
+
+
+```{r}
+tcga_fold <- "../results/TCGA_bioDNN/2021-11-18/model_features/bioDNN_v1/"
+tcga1_conc <- read_delim(paste0(tcga_fold, "concatenate.tsv"), delim = "\t")
+tcga1_conc <- data.matrix(tcga1_conc)
+sum(!apply(tcga1_conc, 2, function(x) all(x == 0)))
+```
+
+
+```{r}
+tcga1_dnn <- read_delim(paste0(tcga_fold, "dense.tsv"), delim = "\t")
+tcga1_dnn <- data.matrix(tcga1_dnn)
+sum(!apply(tcga1_dnn, 2, function(x) all(x == 0)))
+```
+
+
+```{r}
+tcga1_dnn1 <- read_delim(paste0(tcga_fold, "dense_1.tsv"), delim = "\t")
+tcga1_dnn1 <- data.matrix(tcga1_dnn1)
+sum(!apply(tcga1_dnn1, 2, function(x) all(x == 0)))
+```
+
+# DNN model2
 
 ## Description
 
-After we trained the CNN model, we trained an autoencoder based on the output of the CNN layers. This autoencoder had the same dimensions than the layers of the full CNN model. After it was trained, we changed the weights of the CNN model with the weights of the autoencoder. We trained the resulting model for one epoch to maximize the accuracy.
+This DNN model had the same structure. The only difference is that the CpGs mapped to genes were also mapped to the neurons of their corresponding chromosome.
 
-## CNN layer
+```{r}
+dnn2_fold <- "../results/GSE97362/2021-11-18/model_features/bioDNN_v2/"
+```
+
+## First layer
+
+This layer contains the results from the different genes and groups of CpGs from the same chromosome.
 
 ### General pattern
 
-As we retrain for one epoch the model after changing the layers included in the autoencoder, we checked that the CNN features selected in the previous step still capture the signal.
+We first evaluated whether the output of the first layer still contained signal to differentiate the individuals by disease.
 
 ```{r}
-cnnauto_cnn <- read_delim("../results/GSE97632/2021-11-05/model_features/CNN_autoencod_train_v1/flatten.tsv", delim = "\t")
-cnnauto_cnn <- data.matrix(cnnauto_cnn)
+dnn2_conc <- read_delim(paste0(dnn2_fold, "concatenate.tsv"), delim = "\t")
+dnn2_conc <- data.matrix(dnn2_conc)
 
-cnnauto_cnn_se <- SummarizedExperiment(t(cnnauto_cnn), colData = colData(se))
-rownames(cnnauto_cnn_se) <- paste0("Features", seq_len(nrow(cnnauto_cnn_se)))
+dnn2_conc_se <- SummarizedExperiment(t(dnn2_conc), colData = colData(se))
+rownames(dnn2_conc_se) <- paste0("Features", seq_len(nrow(dnn2_conc_se)))
 
-discov_cnnauto_cnn <- cnnauto_cnn_se[, ! cnnauto_cnn_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
-valid_cnnauto_cnn <- cnnauto_cnn_se[, cnnauto_cnn_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+discov_dnn2_conc <- dnn2_conc_se[, ! dnn2_conc_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+valid_dnn2_conc <- dnn2_conc_se[, dnn2_conc_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
 ```
 
-We obtained `r nrow(cnnauto_cnn_se)` features from the CNN layer. Of those, `r sum(!apply(cnnauto_cnn, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
+We obtained `r nrow(dnn2_conc_se)` features from the first DNN layer. Of those, `r sum(!apply(dnn2_conc, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
 
 ```{r}
-pc_cnnauto_cnn <- prcomp(cnnauto_cnn)$x %>%
+pc_dnn2_conc <- prcomp(dnn2_conc)$x %>%
   data.frame()
-rownames(pc_cnnauto_cnn) <- colnames(cnnauto_cnn_se)
-pc_cnnauto_cnn$disease <- colData(se)[rownames(pc_cnnauto_cnn), "disease"]
-pc_cnnauto_cnn$sex <- colData(se)[rownames(pc_cnnauto_cnn), "sex"]
+rownames(pc_dnn2_conc) <- colnames(dnn2_conc_se)
+pc_dnn2_conc$disease <- colData(se)[rownames(pc_dnn2_conc), "disease"]
+pc_dnn2_conc$sex <- colData(se)[rownames(pc_dnn2_conc), "sex"]
 ```
 
 ```{r}
-pc_cnnauto_cnn %>% 
+pc_dnn2_conc %>% 
   ggplot(aes(x = PC1, y = PC2, color = disease)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("CNN+auto model CNN features - Disease")
+  ggtitle("DNN2 model layer 1 features - Disease")
 ```
 
-The top 2 PCs of CNN features from CNN model does not allow differentiating the cases from the the control individuals.
+The second PC of layer 1 features from DNN model allows us differentiating CHARGE cases from control individuals.
 
 ```{r}
-pc_cnnauto_cnn %>% 
-  ggplot(aes(x = PC6, y = PC10, color = disease)) +
+pc_dnn2_conc %>% 
+  ggplot(aes(x = PC2, y = PC6, color = disease)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("CNN+auto model CNN features - Disease")
+  ggtitle("DNN2 model layer 1 features - Disease")
 ```
 
-Components PC6 and PC10 of CNN features from CNN+auto model cluster samples by disease type. Nonetheless, the clustering was better when using the full dataset.
+Components PC2 and PC6 of layer 1 features from DNN model separate samples by disease type. 
 
 ```{r}
-pc_cnnauto_cnn %>% 
+pc_dnn2_conc %>% 
   ggplot(aes(x = PC1, y = PC2, color = sex)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("CNN+auto model CNN features - Sex")
+  ggtitle("DNN2 model layer 1 features - Disease")
 ```
 
-The first component clearly cluster samples by sex.
+There is no correlation with sex. 
 
-Summary: the features from CNN layer of CNN+auto model are mostly equivalent to those of CNN model.
+Summary: the features computed by the first layer in the DNN model are capturing the difference in methylation due to disease.
 
-### Features previously selected
+### Features selection
 
 ```{r}
-pheatmap(assay(discov_cnnauto_cnn)[sel_cnn_cnn_vec, ], scale = "none", 
-         annotation_col  = data.frame(colData(discov_cnnauto_cnn)[, c("disease", "sex"), drop = FALSE]),
+sel_dnn2_conc <- lapply(diseases, getFeatures, set = discov_dnn2_conc, minFC = 0.05)
+sel_dnn2_conc_vec <- unique(unlist(sel_dnn2_conc))
+```
+
+A total of `r length(sel_dnn2_conc$CHARGE)` and `r length(sel_dnn2_conc$Kabuki)` features had different methylation values in controls than in CHARGE or Kabuki, respectively.
+
+```{r}
+pheatmap(assay(discov_dnn2_conc)[sel_dnn2_conc_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(discov_dnn2_conc)[, c("disease", "sex"), drop = FALSE]),
          annotation_colors =  col_colors, 
          show_rownames = FALSE)
 
 ```
 
-Kabuki and control samples are clearly separated. Nonetheless, the differences between CHARGE and control are not so strong than when using all the CpGs.
+Kabuki and control samples are clearly separated, but the separation was better for DNN1 model.
 
 ```{r}
-pheatmap(assay(valid_cnnauto_cnn)[sel_cnn_cnn_vec, ], scale = "none", 
-         annotation_col  = data.frame(colData(valid_cnnauto_cnn)[, c("disease", "sex"), drop = FALSE]),
+pheatmap(assay(valid_dnn2_conc)[sel_dnn2_conc_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(valid_dnn2_conc)[, c("disease", "sex"), drop = FALSE]),
          annotation_colors =  col_colors, 
          show_rownames = FALSE)
 ```
 
-We observed clusters of individuals with suspicious variants but no clear differences between cases and controls are observed.
+Individuals are clustered by disease.
 
 ### SVM training
 
-We used the same features selected for the CNN model.
-
 ```{r}
-svm_cnnauto_cnn <- trainSVM(set = discov_cnnauto_cnn, feats = sel_cnn_cnn_vec)
+svm_dnn2_conc <- trainSVM(set = discov_dnn2_conc, feats = sel_dnn2_conc_vec)
 
-pred_cnnauto_cnn <- predict(svm_cnnauto_cnn, t(assay(cnnauto_cnn_se)))
-table(pred_cnnauto_cnn, se$disease)
+pred_dnn2_conc <- predict(svm_dnn2_conc, t(assay(dnn2_conc_se)))
+table(pred_dnn2_conc, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
 
 ```
 
-The SVM model presented a lower accuracy than when using the CNN layer of the CNN model. The performance was worse for training samples, which presented a higher number of controls identified as cases.
-
-### SVM training with newly selected features
-
-```{r}
-sel_cnnauto_cnn <- lapply(diseases, getFeatures, set = discov_cnnauto_cnn, minFC = 0.05)
-sel_cnnauto_cnn_vec <- unique(unlist(sel_cnnauto_cnn))
-
-svm_cnnauto_cnn2 <- trainSVM(set = discov_cnnauto_cnn, feats = sel_cnnauto_cnn_vec)
-
-pred_cnnauto_cnn2 <- predict(svm_cnnauto_cnn2, t(assay(cnnauto_cnn_se)))
-table(pred_cnnauto_cnn2, se$disease)
-
-```
-
-After repeating the features selection on this CNN features from CNN+auto model, the performance of the SVM is improved, but still it is worse than when using the CNN features from CNN model.
-
-Summary: The extra training epoch seem to have changed the features previously obtained, so they have a worse classification.
+These results are very similar to those from DNN1 model.
 
 ## Dense layer 1 output
 
 ### General pattern
 
-We first evaluated whether the output of the dense 1 layer still contained signal to differentiate the individuals by disease.
+We evaluated whether the output of the dense 1 layer still contained signal to differentiate the individuals by disease.
 
 ```{r}
-cnnauto_dense1 <- read_delim("../results/GSE97632/2021-11-05/model_features/CNN_autoencod_train_v1/dense.tsv", delim = "\t")
-cnnauto_dense1 <- data.matrix(cnnauto_dense1)
+dnn2_dense1 <- read_delim(paste0(dnn2_fold, "dense.tsv"), delim = "\t")
+dnn2_dense1 <- data.matrix(dnn2_dense1)
 
-cnnauto_dense1_se <- SummarizedExperiment(t(cnnauto_dense1), colData = colData(se))
-rownames(cnnauto_dense1_se) <- paste0("Features", seq_len(nrow(cnnauto_dense1_se)))
+dnn2_dense1_se <- SummarizedExperiment(t(dnn2_dense1), colData = colData(se))
+rownames(dnn2_dense1_se) <- paste0("Features", seq_len(nrow(dnn2_dense1_se)))
 
-discov_cnnauto_dense1 <- cnnauto_dense1_se[, ! cnnauto_dense1_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
-valid_cnnauto_dense1 <- cnnauto_dense1_se[, cnnauto_dense1_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+discov_dnn2_dense1 <- dnn2_dense1_se[, ! dnn2_dense1_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+valid_dnn2_dense1 <- dnn2_dense1_se[, dnn2_dense1_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
 ```
 
-We obtained `r nrow(cnnauto_dense1_se)` features from the dense layer. Of those, `r sum(!apply(cnnauto_dense1, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
+We obtained `r nrow(dnn2_dense1_se)` features from the dense layer. Of those, `r sum(!apply(dnn2_dense1, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
 
 ```{r}
-pc_cnnauto_dense1 <- prcomp(cnnauto_dense1)$x %>%
+pc_dnn2_dense1 <- prcomp(dnn2_dense1)$x %>%
   data.frame()
-rownames(pc_cnnauto_dense1) <- colnames(cnnauto_dense1_se)
-pc_cnnauto_dense1$disease <- colData(se)[rownames(pc_cnnauto_dense1), "disease"]
-pc_cnnauto_dense1$sex <- colData(se)[rownames(pc_cnnauto_dense1), "sex"]
+rownames(pc_dnn2_dense1) <- colnames(dnn2_dense1_se)
+pc_dnn2_dense1$disease <- colData(se)[rownames(pc_dnn2_dense1), "disease"]
+pc_dnn2_dense1$sex <- colData(se)[rownames(pc_dnn2_dense1), "sex"]
 ```
 
 ```{r}
-pc_cnnauto_dense1 %>% 
+pc_dnn2_dense1 %>% 
   ggplot(aes(x = PC1, y = PC2, color = disease)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("CNN+auto model dense1 features - Disease")
+  ggtitle("DNN2 model dense1 features - Disease")
 ```
 
-The top 2 PCs of dense 1 features from CNN+auto model does not allow differentiating the cases from the the control individuals.
+The PC1 of the dense layer 1 of the DNN model differentiates control from CHARGE.
 
 ```{r}
-pc_cnnauto_dense1 %>% 
-  ggplot(aes(x = PC6, y = PC10, color = disease)) +
+pc_dnn2_dense1 %>% 
+  ggplot(aes(x = PC1, y = PC3, color = disease)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("CNN+auto model dense1 features - Disease")
+  ggtitle("DNN2 model dense1 features - Disease")
 ```
 
-Components PC6 and PC10 of features from CNN+auto model dense1 layer cluster samples by disease type. Nonetheless, the clustering was better when using the all the CpGs or the CNN features.
+Components PC1 and PC3 of features from CNN model dense1 cluster samples by disease type. Nonetheless, the clustering was better when using the all the CpGs or the layer 1 features.
 
 ```{r}
-pc_cnnauto_dense1 %>% 
+pc_dnn2_dense1 %>% 
   ggplot(aes(x = PC1, y = PC2, color = sex)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("CNN+auto model dense1 features - Sex")
+  ggtitle("DNN2 model dense1 features - Sex")
 ```
 
-The second component clearly cluster samples by sex.
+The first component is not separating sample by sex. 
 
-Summary: the features computed by the CNN+auto model dense1 layer are capturing the difference in methylation due to sex, while the differences due to the disease are not well captured.
+Summary: the features computed by the DNN model dense1 layer are capturing the difference in methylation due to disease rather than to sex.
 
 ### Features selection
 
 Due to the high number of features without significant values, we remove them before selecting the features.
 
 ```{r}
-sel_cnnauto_dense1 <- lapply(diseases, getFeatures, set = discov_cnnauto_dense1[!apply(cnnauto_dense1, 2, function(x) all(x == 0)), ], minFC = 0)
-sel_cnnauto_dense1_vec <- unique(unlist(sel_cnnauto_dense1))
+sel_dnn2_dense1 <- lapply(diseases, getFeatures, set = discov_dnn2_dense1[!apply(dnn2_dense1, 2, function(x) all(x == 0)), ], minFC = 0)
+sel_dnn2_dense1_vec <- unique(unlist(sel_dnn2_dense1))
 ```
 
-A total of `r length(sel_cnnauto_dense1$CHARGE)` and `r length(sel_cnnauto_dense1$Kabuki)` features had different methylation values in controls than in CHARGE or Kabuki, respectively.
+A total of `r length(sel_dnn2_dense1$CHARGE)` and `r length(sel_dnn2_dense1$Kabuki)` features had different methylation values in controls than in CHARGE or Kabuki, respectively.
 
 ```{r}
-pheatmap(assay(discov_cnnauto_dense1)[sel_cnnauto_dense1_vec, ], scale = "none", 
-         annotation_col  = data.frame(colData(discov_cnnauto_dense1)[, c("disease", "sex"), drop = FALSE]),
+pheatmap(assay(discov_dnn2_dense1)[sel_dnn2_dense1_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(discov_dnn2_dense1)[, c("disease", "sex"), drop = FALSE]),
          annotation_colors =  col_colors, 
          show_rownames = FALSE)
 
 ```
 
-We observed some difference between cases and controls that are more evident for Kabuki than for CHARGE.
+Cases and controls are not completely separated.
 
 ```{r}
-pheatmap(assay(valid_cnnauto_dense1)[sel_cnnauto_dense1_vec, ], scale = "none", 
-         annotation_col  = data.frame(colData(valid_cnnauto_dense1)[, c("disease", "sex"), drop = FALSE]),
+pheatmap(assay(valid_dnn2_dense1)[sel_dnn2_dense1_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(valid_dnn2_dense1)[, c("disease", "sex"), drop = FALSE]),
          annotation_colors =  col_colors, 
          show_rownames = FALSE)
 
 ```
 
-These features do not work better in the samples with variants.
+Some sample with variants are clearly separated from controls.
 
 ### SVM model
 
 We repeated the SVM with the features selected in the previous step.
 
 ```{r}
-svm_cnnauto_dense1 <- trainSVM(set = discov_cnnauto_dense1, feats = sel_cnnauto_dense1_vec)
+svm_dnn2_dense1 <- trainSVM(set = discov_dnn2_dense1, feats = sel_dnn2_dense1_vec)
 
-pred_cnnauto_dense1 <- predict(svm_cnnauto_dense1, t(assay(cnnauto_dense1_se)))
-table(pred_cnnauto_dense1, se$disease)
+pred_dnn2_dense1 <- predict(svm_dnn2_dense1, t(assay(dnn2_dense1_se)))
+table(pred_dnn2_dense1, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
 
 ```
 
-The performance is similar to when using the features of CNN model dense1 layer, but worse in this case. The number of controls missclassified has increased (46 vs 44) and fewer individuals with variants are identified as their disease (12 vs 17).
+The performance is much worse than for model 1. A lot of controls are classified as Kabuki.
 
-Summary: The dense1 from the autoencoder does not contain more information to differentiate cases and controls than when running the CNN model.
+```{r}
+svm_dnn2_dense1b <- trainSVM(set = discov_dnn2_dense1, feats = rownames(dnn2_dense1_se)[!apply(dnn2_dense1, 2, function(x) all(x == 0))])
+
+pred_dnn2_dense1b <- predict(svm_dnn2_dense1b, t(assay(dnn2_dense1_se)))
+table(pred_dnn2_dense1b, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
+```
+
+When using all the features with values different than 0, we are able to classify half of the CHARGE samples with variants but not Kabuki. This is better than selection the top features. In this case, DNN2 model is improving DNN1 model.
+
+Summary: The dense 1 layer still contains some information to differentiate cases and controls.
 
 ## Dense layer 2 output
 
@@ -831,214 +884,339 @@ Summary: The dense1 from the autoencoder does not contain more information to di
 We evaluated whether the output of the dense 2 layer still contained signal to differentiate the individuals by disease.
 
 ```{r}
-cnnauto_dense2 <- read_delim("../results/GSE97632/2021-11-05/model_features/CNN_autoencod_train_v1/dense_1.tsv", delim = "\t")
-cnnauto_dense2 <- data.matrix(cnnauto_dense2)
+dnn2_dense2 <- read_delim(paste0(dnn2_fold, "dense_1.tsv"), delim = "\t")
+dnn2_dense2 <- data.matrix(dnn2_dense2)
 
-cnnauto_dense2_se <- SummarizedExperiment(t(cnnauto_dense2), colData = colData(se))
-rownames(cnnauto_dense2_se) <- paste0("Features", seq_len(nrow(cnnauto_dense2_se)))
+dnn2_dense2_se <- SummarizedExperiment(t(dnn2_dense2), colData = colData(se))
+rownames(dnn2_dense2_se) <- paste0("Features", seq_len(nrow(dnn2_dense2_se)))
 
-discov_cnnauto_dense2 <- cnnauto_dense2_se[, ! cnnauto_dense2_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
-valid_cnnauto_dense2 <- cnnauto_dense2_se[, cnnauto_dense2_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+discov_dnn2_dense2 <- dnn2_dense2_se[, ! dnn2_dense2_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+valid_dnn2_dense2 <- dnn2_dense2_se[, dnn2_dense2_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
 ```
 
-We obtained `r nrow(cnnauto_dense2_se)` features from the dense layer. Of those, `r sum(!apply(cnnauto_dense2, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
+We obtained `r nrow(dnn2_dense2_se)` features from the dense layer. Of those, `r sum(!apply(dnn2_dense2, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
 
 ```{r}
-pc_cnnauto_dense2 <- prcomp(cnnauto_dense2)$x %>%
+pc_dnn2_dense2 <- prcomp(dnn2_dense2)$x %>%
   data.frame()
-rownames(pc_cnnauto_dense2) <- colnames(cnnauto_dense2_se)
-pc_cnnauto_dense2$disease <- colData(se)[rownames(pc_cnnauto_dense2), "disease"]
-pc_cnnauto_dense2$sex <- colData(se)[rownames(pc_cnnauto_dense2), "sex"]
+rownames(pc_dnn2_dense2) <- colnames(dnn2_dense2_se)
+pc_dnn2_dense2$disease <- colData(se)[rownames(pc_dnn2_dense2), "disease"]
+pc_dnn2_dense2$sex <- colData(se)[rownames(pc_dnn2_dense2), "sex"]
 ```
 
 ```{r}
-pc_cnnauto_dense2 %>% 
+pc_dnn2_dense2 %>% 
   ggplot(aes(x = PC1, y = PC2, color = disease)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("CNN+auto model dense2 features - Disease")
+  ggtitle("DNN2 model dense2 features - Disease")
 ```
 
-The top 2 PCs of dense 2 features from CNN model does not allow differentiating the cases from the the control individuals.
+The first two PCs from DNN2 model separates charge from controls. Nonetheless, the clustering was better when using the all the CpGs.
 
 ```{r}
-pc_cnnauto_dense2 %>% 
-  ggplot(aes(x = PC5, y = PC6, color = disease)) +
-  geom_point() + 
-  theme_bw() +
-  ggtitle("CNN model dense2 features - Disease")
-```
-
-Components PC5 and PC6 of features from CNN+auto model dense2 layer cluster samples by disease type. Nonetheless, the clustering was better when using the all the CpGs or the CNN features.
-
-```{r}
-pc_cnnauto_dense2 %>% 
+pc_dnn2_dense2 %>% 
   ggplot(aes(x = PC1, y = PC2, color = sex)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("CNN+auto model dense2 features - Sex")
+  ggtitle("DNN2 model dense2 features - Disease")
 ```
 
-Again, the second component clearly cluster samples by sex, though the difference is not as strong.
+The first component is not separating sample by sex. 
 
-Summary: the features computed by the CNN+auto model dense2 layer are quite similar than the features from CNN model dense2 layer
+Summary: the features computed by the DNN2 model dense2 layer are capturing the difference in methylation due to disease rather than to sex.
 
-### Features selection
+### Heatmaps
 
-Due to the high number of features without significant values, we remove them before selecting the features.
+We will select only those features where at least one sample has a values different than 0.
 
 ```{r}
-sel_cnnauto_dense2 <- lapply(diseases, getFeatures, set = discov_cnnauto_dense2[!apply(cnnauto_dense2, 2, function(x) all(x == 0)), ], minFC = 0)
-sel_cnnauto_dense2_vec <- unique(unlist(sel_cnnauto_dense2))
+sel_dnn2_dense2_vec <- rownames(discov_dnn2_dense2)[!apply(dnn2_dense2, 2, function(x) all(x == 0))]
 ```
 
-No features had differences between cases and controls.
 
 ```{r}
-pheatmap(assay(discov_cnn_dense2)[!apply(cnnauto_dense2, 2, function(x) all(x == 0)), ], scale = "none", 
-         annotation_col  = data.frame(colData(discov_cnn_dense2)[, c("disease", "sex"), drop = FALSE]),
+pheatmap(assay(discov_dnn2_dense2)[sel_dnn2_dense2_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(discov_dnn2_dense2)[, c("disease", "sex"), drop = FALSE]),
          annotation_colors =  col_colors, 
          show_rownames = FALSE)
 
 ```
 
-Samples are clustered by sex, although different sub-groups are observed. Then, we observed some clustering of Kabuki samples.
+There are some cluster of case samples but they are not clearly separated from controls.
 
 ```{r}
-pheatmap(assay(valid_cnnauto_dense2)[!apply(cnnauto_dense2, 2, function(x) all(x == 0)), ], scale = "none", 
-         annotation_col  = data.frame(colData(valid_cnnauto_dense2)[, c("disease", "sex"), drop = FALSE]),
+pheatmap(assay(valid_dnn2_dense2)[sel_dnn2_dense2_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(valid_dnn2_dense2)[, c("disease", "sex"), drop = FALSE]),
          annotation_colors =  col_colors, 
          show_rownames = FALSE)
 
 ```
 
-Samples are clustered by sex. For females, we observed a clustering of case samples, but with both diseases merged.
+Some samples with variants are separated from controls.
 
 ### SVM model
 
 We repeated the SVM with all the features from dense 2 different than 0.
 
 ```{r}
-svm_cnnauto_dense2 <- trainSVM(set = discov_cnnauto_dense2, feats = rownames(cnnauto_dense2_se)[!apply(cnnauto_dense2, 2, function(x) all(x == 0))])
+svm_dnn2_dense2 <- trainSVM(set = discov_dnn2_dense2, feats = sel_dnn2_dense2_vec)
 
-pred_cnnauto_dense2 <- predict(svm_cnnauto_dense2, t(assay(cnnauto_dense2_se)))
-table(pred_cnnauto_dense2, se$disease)
+pred_dnn2_dense2 <- predict(svm_dnn2_dense2, t(assay(dnn2_dense2_se)))
+table(pred_dnn2_dense2, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
 
 ```
 
-The SVM had a very bad performance, classifying all samples as control. This performance is much worse than for CNN model.
+The SVM fails to differentiate cases from controls. This step works much worse than for DNN1 model.
 
-# auto model
+
+```{r}
+discov_dnn2_dense2_df <- data.frame(t(assay(discov_dnn2_dense2[sel_dnn2_dense2_vec, ])))
+discov_dnn2_dense2_df$class <- as.character(discov_dnn2_dense2$disease)
+smoteKab <- SMOTE(discov_dnn2_dense2_df[discov_dnn2_dense2_df$class != "CHARGE", -ncol(discov_dnn2_dense2_df) ], discov_dnn2_dense2_df$class[discov_dnn2_dense2_df$class != "CHARGE"] )
+
+smoteCharge <- SMOTE(discov_dnn2_dense2_df[discov_dnn2_dense2_df$class != "Kabuki", -ncol(discov_dnn2_dense2_df) ], discov_dnn2_dense2_df$class[discov_dnn2_dense2_df$class != "Kabuki"] )
+
+mixTab <- rbind(smoteCharge$syn_data, smoteKab$syn_data, discov_dnn2_dense2_df)
+
+
+svm_dnn2_dense2_smote <- svm(factor(class) ~ ., data = mixTab)
+pred_dnn2_dense2_smote <- predict(svm_dnn2_dense2_smote, t(assay(dnn2_dense2_se)))
+table(pred_dnn2_dense2_smote, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
+
+```
+
+Increase the sample size with SMOTE is reducing the capability of detecting controls.
+
+
+# DNN model3
 
 ## Description
 
-We repeated the exploration of the features but without retraining the network after adding the weights of the autoencoder.
+This DNN model had the same structure than DNN model1 but with one neuron per gene, and 1000 per chromosome.
+
+
+```{r}
+dnn3_fold <- "../results/GSE97362/2021-11-22/model_features/bioDNN_v3/"
+```
+
+## First layer
+
+This layer contains the results from the different genes and groups of CpGs from the same chromosome.
+
+### General pattern
+
+We first evaluated whether the output of the first layer still contained signal to differentiate the individuals by disease.
+
+```{r}
+dnn3_conc <- read_delim(paste0(dnn3_fold, "concatenate.tsv"), delim = "\t")
+dnn3_conc <- data.matrix(dnn3_conc)
+
+dnn3_conc_se <- SummarizedExperiment(t(dnn3_conc), colData = colData(se))
+rownames(dnn3_conc_se) <- paste0("Features", seq_len(nrow(dnn3_conc_se)))
+
+discov_dnn3_conc <- dnn3_conc_se[, ! dnn3_conc_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+valid_dnn3_conc <- dnn3_conc_se[, dnn3_conc_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+```
+
+We obtained `r nrow(dnn3_conc_se)` features from the first DNN layer. Of those, `r sum(!apply(dnn3_conc, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
+
+```{r}
+pc_dnn3_conc <- prcomp(dnn3_conc)$x %>%
+  data.frame()
+rownames(pc_dnn3_conc) <- colnames(dnn3_conc_se)
+pc_dnn3_conc$disease <- colData(se)[rownames(pc_dnn3_conc), "disease"]
+pc_dnn3_conc$sex <- colData(se)[rownames(pc_dnn3_conc), "sex"]
+```
+
+```{r}
+pc_dnn3_conc %>% 
+  ggplot(aes(x = PC1, y = PC2, color = disease)) +
+  geom_point() + 
+  theme_bw() +
+  ggtitle("DNN3 model layer 1 features - Disease")
+```
+
+The second PC of layer 1 features from DNN model allows us differentiating CHARGE cases from control individuals.
+
+```{r}
+pc_dnn3_conc %>% 
+  ggplot(aes(x = PC2, y = PC4, color = disease)) +
+  geom_point() + 
+  theme_bw() +
+  ggtitle("DNN3 model layer 1 features - Disease")
+```
+
+Components PC2 and PC4 of layer 1 features from DNN model  separate samples by disease type. 
+
+```{r}
+pc_dnn3_conc %>% 
+  ggplot(aes(x = PC1, y = PC2, color = sex)) +
+  geom_point() + 
+  theme_bw() +
+  ggtitle("DNN model layer 1 features - Disease")
+```
+
+The first two components does not cluster samples by sex.
+
+Summary: the features computed by the first layer in the DNN model are capturing the differences due to the disease in the first four components.
+
+### Features selection
+
+```{r}
+sel_dnn3_conc <- lapply(diseases, getFeatures, set = discov_dnn3_conc, minFC = 0.05)
+sel_dnn3_conc_vec <- unique(unlist(sel_dnn3_conc))
+```
+
+A total of `r length(sel_dnn3_conc$CHARGE)` and `r length(sel_dnn3_conc$Kabuki)` features had different methylation values in controls than in CHARGE or Kabuki, respectively.
+
+```{r}
+pheatmap(assay(discov_dnn3_conc)[sel_dnn3_conc_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(discov_dnn3_conc)[, c("disease", "sex"), drop = FALSE]),
+         annotation_colors =  col_colors, 
+         show_rownames = FALSE)
+
+```
+
+Kabuki and control samples are clearly separated. 
+
+```{r}
+pheatmap(assay(valid_dnn3_conc)[sel_dnn3_conc_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(valid_dnn3_conc)[, c("disease", "sex"), drop = FALSE]),
+         annotation_colors =  col_colors, 
+         show_rownames = FALSE)
+```
+
+Individuals are clustered by disease.
+
+### SVM training
+
+```{r}
+svm_dnn3_conc <- trainSVM(set = discov_dnn3_conc, feats = sel_dnn3_conc_vec)
+
+pred_dnn3_conc <- predict(svm_dnn3_conc, t(assay(dnn3_conc_se)))
+table(pred_dnn3_conc, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
+
+```
+
+With this data, the SVM model presented a lower accuracy. Now, it missclassified 6 controls individuals from the training dataset, identified as cases. In the test dataset, 25% of CHARGE samples were identified as controls. 
+
+Summary: The first layer of the DNN network have reduced the differences between the different disease group but it is still sufficient to classify the individuals.
 
 ## Dense layer 1 output
 
 ### General pattern
 
-We first evaluated whether the output of the dense 1 layer still contained signal to differentiate the individuals by disease.
+We evaluated whether the output of the dense 1 layer still contained signal to differentiate the individuals by disease.
 
 ```{r}
-auto_dense1 <- read_delim("../results/GSE97632/2021-11-05/model_features/autoencoder_dense.tsv", delim = "\t")
-auto_dense1 <- data.matrix(auto_dense1)
+dnn3_dense1 <- read_delim(paste0(dnn3_fold, "dense.tsv"), delim = "\t")
+dnn3_dense1 <- data.matrix(dnn3_dense1)
 
-auto_dense1_se <- SummarizedExperiment(t(auto_dense1), colData = colData(se))
-rownames(auto_dense1_se) <- paste0("Features", seq_len(nrow(auto_dense1_se)))
+dnn3_dense1_se <- SummarizedExperiment(t(dnn3_dense1), colData = colData(se))
+rownames(dnn3_dense1_se) <- paste0("Features", seq_len(nrow(dnn3_dense1_se)))
 
-discov_auto_dense1 <- auto_dense1_se[, ! auto_dense1_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
-valid_auto_dense1 <- auto_dense1_se[, auto_dense1_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+discov_dnn3_dense1 <- dnn3_dense1_se[, ! dnn3_dense1_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+valid_dnn3_dense1 <- dnn3_dense1_se[, dnn3_dense1_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
 ```
 
-We obtained `r nrow(auto_dense1_se)` features from the dense layer. Of those, `r sum(!apply(auto_dense1, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
+We obtained `r nrow(dnn3_dense1_se)` features from the dense layer. Of those, `r sum(!apply(dnn3_dense1, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
 
 ```{r}
-pc_auto_dense1 <- prcomp(auto_dense1)$x %>%
+pc_dnn3_dense1 <- prcomp(dnn3_dense1)$x %>%
   data.frame()
-rownames(pc_auto_dense1) <- colnames(auto_dense1_se)
-pc_auto_dense1$disease <- colData(se)[rownames(pc_auto_dense1), "disease"]
-pc_auto_dense1$sex <- colData(se)[rownames(pc_auto_dense1), "sex"]
+rownames(pc_dnn3_dense1) <- colnames(dnn3_dense1_se)
+pc_dnn3_dense1$disease <- colData(se)[rownames(pc_dnn3_dense1), "disease"]
+pc_dnn3_dense1$sex <- colData(se)[rownames(pc_dnn3_dense1), "sex"]
 ```
 
 ```{r}
-pc_auto_dense1 %>% 
+pc_dnn3_dense1 %>% 
   ggplot(aes(x = PC1, y = PC2, color = disease)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("auto model dense1 features - Disease")
+  ggtitle("dnn3 model dense1 features - Disease")
 ```
 
-The top 2 PCs of dense 1 features from auto model does not allow differentiating the cases from the the control individuals.
+The first 2 PCs have less differences between cases and controls.
 
 ```{r}
-pc_auto_dense1 %>% 
-  ggplot(aes(x = PC5, y = PC10, color = disease)) +
+pc_dnn3_dense1 %>% 
+  ggplot(aes(x = PC3, y = PC4, color = disease)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("auto model dense1 features - Disease")
+  ggtitle("DNN3 model dense1 features - Disease")
 ```
 
-Components PC5 and PC10 of features from uto model dense1 layer cluster samples by disease type. 
+Components PC3 and PC4 of features from DNN model3 dense1 cluster samples by disease type. Nonetheless, the clustering was better when using the all the CpGs or the layer 1 features.
 
 ```{r}
-pc_auto_dense1 %>% 
+pc_dnn3_dense1 %>% 
   ggplot(aes(x = PC1, y = PC2, color = sex)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("auto model dense1 features - Sex")
+  ggtitle("DNN3 model dense1 features - Sex")
 ```
 
-The second component clearly cluster samples by sex.
+The first component is not separating sample by sex. 
 
-Summary: the features computed by the auto model dense1 layer are similar than those from CNN model. 
+Summary: the features computed by the DNN3 model dense1 layer are capturing the difference in methylation due to disease rather than to sex.
 
 ### Features selection
 
 Due to the high number of features without significant values, we remove them before selecting the features.
 
 ```{r}
-sel_auto_dense1 <- lapply(diseases, getFeatures, set = discov_auto_dense1[!apply(auto_dense1, 2, function(x) all(x == 0)), ], minFC = 0)
-sel_auto_dense1_vec <- unique(unlist(sel_auto_dense1))
+sel_dnn3_dense1 <- lapply(diseases, getFeatures, set = discov_dnn3_dense1[!apply(dnn3_dense1, 2, function(x) all(x == 0)), ], minFC = 0)
+sel_dnn3_dense1_vec <- unique(unlist(sel_dnn3_dense1))
 ```
 
-A total of `r length(sel_auto_dense1$CHARGE)` and `r length(sel_auto_dense1$Kabuki)` features had different methylation values in controls than in CHARGE or Kabuki, respectively.
+A total of `r length(sel_dnn3_dense1$CHARGE)` and `r length(sel_dnn3_dense1$Kabuki)` features had different methylation values in controls than in CHARGE or Kabuki, respectively.
 
 ```{r}
-pheatmap(assay(discov_auto_dense1)[sel_auto_dense1_vec, ], scale = "none", 
-         annotation_col  = data.frame(colData(discov_auto_dense1)[, c("disease", "sex"), drop = FALSE]),
+pheatmap(assay(discov_dnn3_dense1)[sel_dnn3_dense1_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(discov_dnn3_dense1)[, c("disease", "sex"), drop = FALSE]),
          annotation_colors =  col_colors, 
          show_rownames = FALSE)
 
 ```
 
-We observed some difference between cases and controls that are more evident for Kabuki than for CHARGE.
+Kabuki and CHARGE samples are separated but are merged with other control samples.
 
 ```{r}
-pheatmap(assay(valid_auto_dense1)[sel_auto_dense1_vec, ], scale = "none", 
-         annotation_col  = data.frame(colData(valid_auto_dense1)[, c("disease", "sex"), drop = FALSE]),
+pheatmap(assay(valid_dnn3_dense1)[sel_dnn3_dense1_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(valid_dnn3_dense1)[, c("disease", "sex"), drop = FALSE]),
          annotation_colors =  col_colors, 
          show_rownames = FALSE)
 
 ```
 
-Apparently, the features from auto model works better than those of CNN model.
+Some samples with variants are clearly separated from controls.
 
 ### SVM model
 
 We repeated the SVM with the features selected in the previous step.
 
 ```{r}
-svm_auto_dense1 <- trainSVM(set = discov_auto_dense1, feats = sel_auto_dense1_vec)
+svm_dnn3_dense1 <- trainSVM(set = discov_dnn3_dense1, feats = sel_dnn3_dense1_vec)
 
-pred_auto_dense1 <- predict(svm_auto_dense1, t(assay(auto_dense1_se)))
-table(pred_auto_dense1, se$disease)
+pred_dnn3_dense1 <- predict(svm_dnn3_dense1, t(assay(dnn3_dense1_se)))
+table(pred_dnn3_dense1, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
 
 ```
 
-The performance is similar to when using the features of CNN model dense1 layer. The number of controls missclassified has increased (46 vs 44), but one less CHARGE are identified as control. The same number of individuals with variants are identified as their disease (17).
+The SVM model can identify case samples but confuse some controls with case samples. The performance is still good for samples with Kabuki variants.
 
-Summary: The dense1 from the autoencoder has similar information to differentiate cases and controls than when running the CNN model.
+```{r}
+svm_dnn3_dense1b <- trainSVM(set = discov_dnn3_dense1, feats = rownames(dnn3_dense1_se)[!apply(dnn3_dense1, 2, function(x) all(x == 0))])
+
+pred_dnn3_dense1b <- predict(svm_dnn3_dense1b, t(assay(dnn3_dense1_se)))
+table(pred_dnn3_dense1b, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
+```
+
+When using all the features with values different than 0, we improve the classification for both CHARGE and Kabuki. Nonetheless, the accuracy is around 50%.
+
+Summary: The dense 1 layer still contains some information to differentiate cases and controls.
 
 ## Dense layer 2 output
 
@@ -1047,209 +1225,649 @@ Summary: The dense1 from the autoencoder has similar information to differentiat
 We evaluated whether the output of the dense 2 layer still contained signal to differentiate the individuals by disease.
 
 ```{r}
-auto_dense2 <- read_delim("../results/GSE97632/2021-11-05/model_features/autoencoder_dense1.tsv", delim = "\t")
-auto_dense2 <- data.matrix(auto_dense2)
+dnn3_dense2 <- read_delim(paste0(dnn3_fold, "dense_1.tsv"), delim = "\t")
+dnn3_dense2 <- data.matrix(dnn3_dense2)
 
-auto_dense2_se <- SummarizedExperiment(t(auto_dense2), colData = colData(se))
-rownames(auto_dense2_se) <- paste0("Features", seq_len(nrow(auto_dense2_se)))
+dnn3_dense2_se <- SummarizedExperiment(t(dnn3_dense2), colData = colData(se))
+rownames(dnn3_dense2_se) <- paste0("Features", seq_len(nrow(dnn3_dense2_se)))
 
-discov_auto_dense2 <- auto_dense2_se[, ! auto_dense2_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
-valid_auto_dense2 <- auto_dense2_se[, auto_dense2_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+discov_dnn3_dense2 <- dnn3_dense2_se[, ! dnn3_dense2_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+valid_dnn3_dense2 <- dnn3_dense2_se[, dnn3_dense2_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
 ```
 
-We obtained `r nrow(auto_dense2_se)` features from the dense layer. Of those, `r sum(!apply(auto_dense2, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
+We obtained `r nrow(dnn3_dense2_se)` features from the dense layer. Of those, `r sum(!apply(dnn3_dense2, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
 
 ```{r}
-pc_auto_dense2 <- prcomp(auto_dense2)$x %>%
+pc_dnn3_dense2 <- prcomp(dnn3_dense2)$x %>%
   data.frame()
-rownames(pc_auto_dense2) <- colnames(auto_dense2_se)
-pc_auto_dense2$disease <- colData(se)[rownames(pc_auto_dense2), "disease"]
-pc_auto_dense2$sex <- colData(se)[rownames(pc_auto_dense2), "sex"]
+rownames(pc_dnn3_dense2) <- colnames(dnn3_dense2_se)
+pc_dnn3_dense2$disease <- colData(se)[rownames(pc_dnn3_dense2), "disease"]
+pc_dnn3_dense2$sex <- colData(se)[rownames(pc_dnn3_dense2), "sex"]
 ```
 
 ```{r}
-pc_auto_dense2 %>% 
+pc_dnn3_dense2 %>% 
   ggplot(aes(x = PC1, y = PC2, color = disease)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("auto model dense2 features - Disease")
+  ggtitle("DNN3 model dense2 features - Disease")
 ```
 
-The top 2 PCs of dense 2 features from CNN model does not allow differentiating the cases from the the control individuals.
+The first two PCs do not have much information to separate cases from controls.
 
 ```{r}
-pc_auto_dense2 %>% 
-  ggplot(aes(x = PC5, y = PC8, color = disease)) +
+pc_dnn3_dense2 %>% 
+  ggplot(aes(x = PC3, y = PC5, color = disease)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("Auto model dense2 features - Disease")
+  ggtitle("DNN3 model dense2 features - Disease")
 ```
 
-Components PC5 and PC8 of features from auto model dense2 layer cluster samples by disease type. Nonetheless, the clustering was better when using the all the CpGs or the CNN features.
+Components PC3 and PC5 of features from DNN3 model dense2 cluster samples by disease type. Nonetheless, the clustering was better when using the all the CpGs.
 
 ```{r}
-pc_auto_dense2 %>% 
+pc_dnn3_dense2 %>% 
   ggplot(aes(x = PC1, y = PC2, color = sex)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("CNN+auto model dense2 features - Sex")
+  ggtitle("DNN3 model dense2 features - Disease")
 ```
 
-Again, the first component clearly cluster samples by sex, though the difference is not as strong.
+The first component is not separating sample by sex. 
 
-Summary: the features computed by the auto model dense2 layer are quite similar than the features from CNN model dense2 layer
+Summary: the features computed by the DNN3 model dense2 layer are capturing the difference in methylation due to disease rather than to sex.
 
-### Features selection
+### Heatmaps
 
-Due to the high number of features without significant values, we remove them before selecting the features.
+We will select only those features where at least one sample has a values different than 0.
 
 ```{r}
-sel_auto_dense2 <- lapply(diseases, getFeatures, set = discov_auto_dense2[!apply(auto_dense2, 2, function(x) all(x == 0)), ], minFC = 0)
-sel_auto_dense2_vec <- unique(unlist(sel_auto_dense2))
+sel_dnn3_dense2_vec <- rownames(discov_dnn3_dense2)[!apply(dnn3_dense2, 2, function(x) all(x == 0))]
 ```
 
-No features had differences between cases and controls.
 
 ```{r}
-pheatmap(assay(discov_cnn_dense2)[!apply(auto_dense2, 2, function(x) all(x == 0)), ], scale = "none", 
-         annotation_col  = data.frame(colData(discov_cnn_dense2)[, c("disease", "sex"), drop = FALSE]),
+pheatmap(assay(discov_dnn3_dense2)[sel_dnn3_dense2_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(discov_dnn3_dense2)[, c("disease", "sex"), drop = FALSE]),
          annotation_colors =  col_colors, 
          show_rownames = FALSE)
 
 ```
 
-Samples are clustered by sex, although different sub-groups are observed. Then, we observed some clustering of Kabuki samples.
+There are some cluster of case samples but they are not clearly separated from controls.
 
 ```{r}
-pheatmap(assay(valid_auto_dense2)[!apply(auto_dense2, 2, function(x) all(x == 0)), ], scale = "none", 
-         annotation_col  = data.frame(colData(valid_auto_dense2)[, c("disease", "sex"), drop = FALSE]),
+pheatmap(assay(valid_dnn3_dense2)[sel_dnn3_dense2_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(valid_dnn3_dense2)[, c("disease", "sex"), drop = FALSE]),
          annotation_colors =  col_colors, 
          show_rownames = FALSE)
 
 ```
 
-Samples are clustered by sex. For females, we observed a clustering of case samples, but with both diseases merged.
+Some samples with variants are separated from controls.
 
 ### SVM model
 
 We repeated the SVM with all the features from dense 2 different than 0.
 
 ```{r}
-svm_auto_dense2 <- trainSVM(set = discov_auto_dense2, feats = rownames(auto_dense2_se)[!apply(auto_dense2, 2, function(x) all(x == 0))])
+svm_dnn3_dense2 <- trainSVM(set = discov_dnn3_dense2, feats = sel_dnn3_dense2_vec)
 
-pred_auto_dense2 <- predict(svm_auto_dense2, t(assay(auto_dense2_se)))
-table(pred_auto_dense2, se$disease)
+pred_dnn3_dense2 <- predict(svm_dnn3_dense2, t(assay(dnn3_dense2_se)))
+table(pred_dnn3_dense2, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
 
 ```
 
-The SVM cannot differentiate any case from controls. 
+The SVM is not able to differentiate case samples even in the training set. Therefore, it fails to classify any sample in the validation set.
 
-## Autoencoder output layer
+Summary: The dense 2 layer still contain some information to differentiate cases and controls, although it might not be enough for correctly distinguish the individuals.
+
+```{r}
+discov_dnn3_dense2_df <- data.frame(t(assay(discov_dnn3_dense2[sel_dnn3_dense2_vec, ])))
+discov_dnn3_dense2_df$class <- as.character(discov_dnn3_dense2$disease)
+smoteKab <- SMOTE(discov_dnn3_dense2_df[discov_dnn3_dense2_df$class != "CHARGE", -ncol(discov_dnn3_dense2_df) ], discov_dnn3_dense2_df$class[discov_dnn3_dense2_df$class != "CHARGE"] )
+
+smoteCharge <- SMOTE(discov_dnn3_dense2_df[discov_dnn3_dense2_df$class != "Kabuki", -ncol(discov_dnn3_dense2_df) ], discov_dnn3_dense2_df$class[discov_dnn3_dense2_df$class != "Kabuki"] )
+
+mixTab <- rbind(smoteCharge$syn_data, smoteKab$syn_data, discov_dnn3_dense2_df)
+
+
+svm_dnn3_dense2_smote <- svm(factor(class) ~ ., data = mixTab)
+pred_dnn3_dense2_smote <- predict(svm_dnn3_dense2_smote, t(assay(dnn3_dense2_se)))
+table(pred_dnn3_dense2_smote, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
+
+```
+
+Increase the sample size with SMOTE improves the ability to classify Kabuki samples but the specificity is reduced. The accuracy for CHARGE samples remains low.
+
+## TCGA data
+
+We explored the features generated by the DNN3 model in the original TCGA data.
+
+
+```{r}
+tcga3_fold <- "../results/TCGA_bioDNN/2021-11-21/model_features/bioDNN_v3/"
+tcga3_conc <- read_delim(paste0(tcga3_fold, "concatenate.tsv"), delim = "\t")
+tcga3_conc <- data.matrix(tcga3_conc)
+sum(!apply(tcga3_conc, 2, function(x) all(x == 0)))
+```
+`r round(mean(!apply(tcga3_conc, 2, function(x) all(x == 0)))*100, 1)`% of features of layer1 have meaningful values in TCGA.
+
+
+
+```{r}
+tcga3_dnn <- read_delim(paste0(tcga3_fold, "dense.tsv"), delim = "\t")
+tcga3_dnn <- data.matrix(tcga3_dnn)
+sum(!apply(tcga3_dnn, 2, function(x) all(x == 0)))
+```
+
+`r round(mean(!apply(tcga3_dnn, 2, function(x) all(x == 0)))*100, 1)`% of features of dense layer 1 have meaningful values in TCGA.
+
+
+```{r}
+tcga3_dnn1 <- read_delim(paste0(tcga3_fold, "dense_1.tsv"), delim = "\t")
+tcga3_dnn1 <- data.matrix(tcga3_dnn1)
+sum(!apply(tcga3_dnn1, 2, function(x) all(x == 0)))
+```
+`r round(mean(!apply(tcga3_dnn1, 2, function(x) all(x == 0)))*100, 1)`% of features of dense layer 2 have meaningful values in TCGA.
+
+
+# DNN model4
+
+## Description
+
+
+This DNN model had the same structure than DNN model3 but connecting all CpGs to the chromosome neurons.
+
+```{r}
+dnn4_fold <- "../results/GSE97362/2021-11-21/model_features/bioDNN_v4/"
+```
+
+## First layer
+
+This layer contains the results from the different genes and groups of CpGs from the same chromosome.
 
 ### General pattern
 
-We checked that the output of the autoencoder still capture the signal.
+We first evaluated whether the output of the first layer still contained signal to differentiate the individuals by disease.
 
 ```{r}
-auto_out <- read_delim("../results/GSE97632/2021-11-05/model_features/autoencoder_output.tsv", delim = "\t")
-auto_out <- data.matrix(auto_out)
+dnn4_conc <- read_delim(paste0(dnn4_fold, "concatenate.tsv"), delim = "\t")
+dnn4_conc <- data.matrix(dnn4_conc)
 
-auto_out_se <- SummarizedExperiment(t(auto_out), colData = colData(se))
-rownames(auto_out_se) <- paste0("Features", seq_len(nrow(auto_out_se)))
+dnn4_conc_se <- SummarizedExperiment(t(dnn4_conc), colData = colData(se))
+rownames(dnn4_conc_se) <- paste0("Features", seq_len(nrow(dnn4_conc_se)))
 
-discov_auto_out <- auto_out_se[, ! auto_out_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
-valid_auto_out <- auto_out_se[, auto_out_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+discov_dnn4_conc <- dnn4_conc_se[, ! dnn4_conc_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+valid_dnn4_conc <- dnn4_conc_se[, dnn4_conc_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
 ```
 
-We obtained `r nrow(auto_out_se)` features from the CNN layer. Of those, `r sum(!apply(auto_out, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
+We obtained `r nrow(dnn4_conc_se)` features from the first DNN layer. Of those, `r sum(!apply(dnn4_conc, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
 
 ```{r}
-pc_auto_out <- prcomp(auto_out)$x %>%
+pc_dnn4_conc <- prcomp(dnn4_conc)$x %>%
   data.frame()
-rownames(pc_auto_out) <- colnames(auto_out_se)
-pc_auto_out$disease <- colData(se)[rownames(pc_auto_out), "disease"]
-pc_auto_out$sex <- colData(se)[rownames(pc_auto_out), "sex"]
+rownames(pc_dnn4_conc) <- colnames(dnn4_conc_se)
+pc_dnn4_conc$disease <- colData(se)[rownames(pc_dnn4_conc), "disease"]
+pc_dnn4_conc$sex <- colData(se)[rownames(pc_dnn4_conc), "sex"]
 ```
 
 ```{r}
-pc_auto_out %>% 
+pc_dnn4_conc %>% 
   ggplot(aes(x = PC1, y = PC2, color = disease)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("autoencoder output - Disease")
+  ggtitle("DNN4 model layer 1 features - Disease")
 ```
 
-The top 2 PCs of CNN features from CNN model does not allow differentiating the cases from the the control individuals.
+The first PC of layer 1 features from DNN model allows us differentiating CHARGE cases from control individuals.
 
 ```{r}
-pc_auto_out %>% 
-  ggplot(aes(x = PC5, y = PC9, color = disease)) +
+pc_dnn4_conc %>% 
+  ggplot(aes(x = PC1, y = PC5, color = disease)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("autoencoder output - Disease")
+  ggtitle("DNN model layer 1 features - Disease")
 ```
 
-It is very hard to differentiate the individuals by disease with the PCs based on the autoencoder output.
+Components PC1 and PC5 of layer 1 features from DNN model4  separate samples by disease type. 
 
 ```{r}
-pc_auto_out %>% 
+pc_dnn4_conc %>% 
   ggplot(aes(x = PC1, y = PC2, color = sex)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("Autoencoder output - Sex")
+  ggtitle("DNN4 model layer 1 features - Sex")
 ```
 
-The first two components clearly cluster samples by sex.
+The first component does not cluster samples by sex.
 
-Summary: the signal of the disease is lost after applying the autoencoder. 
+Summary: the features computed by the first layer in hte DNN model are capturing the differences due to the disease.
 
-### Features previously selected
+### Features selection
 
 ```{r}
-pheatmap(assay(discov_auto_out)[sel_cnn_cnn_vec, ], scale = "none", 
-         annotation_col  = data.frame(colData(discov_auto_out)[, c("disease", "sex"), drop = FALSE]),
+sel_dnn4_conc <- lapply(diseases, getFeatures, set = discov_dnn4_conc, minFC = 0.05)
+sel_dnn4_conc_vec <- unique(unlist(sel_dnn4_conc))
+```
+
+A total of `r length(sel_dnn4_conc$CHARGE)` and `r length(sel_dnn4_conc$Kabuki)` features had different methylation values in controls than in CHARGE or Kabuki, respectively.
+
+```{r}
+pheatmap(assay(discov_dnn4_conc)[sel_dnn4_conc_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(discov_dnn4_conc)[, c("disease", "sex"), drop = FALSE]),
          annotation_colors =  col_colors, 
          show_rownames = FALSE)
 
 ```
 
-Samples are separated by sex, not by disease.
+Kabuki and control samples are clearly separated. 
 
 ```{r}
-pheatmap(assay(valid_auto_out)[sel_cnn_cnn_vec, ], scale = "none", 
-         annotation_col  = data.frame(colData(valid_auto_out)[, c("disease", "sex"), drop = FALSE]),
+pheatmap(assay(valid_dnn4_conc)[sel_dnn4_conc_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(valid_dnn4_conc)[, c("disease", "sex"), drop = FALSE]),
          annotation_colors =  col_colors, 
          show_rownames = FALSE)
 ```
 
-Samples are separeted by sex, not by disease.
+Individuals are clustered by disease.
 
 ### SVM training
 
-We used the same features selected for the CNN model.
-
 ```{r}
-svm_auto_out <- trainSVM(set = discov_auto_out, feats = sel_cnn_cnn_vec)
+svm_dnn4_conc <- trainSVM(set = discov_dnn4_conc, feats = sel_dnn4_conc_vec)
 
-pred_auto_out <- predict(svm_auto_out, t(assay(auto_out_se)))
-table(pred_auto_out, se$disease)
+pred_dnn4_conc <- predict(svm_dnn4_conc, t(assay(dnn4_conc_se)))
+table(pred_dnn4_conc, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
 
 ```
 
-Using the previously selected features, the SVM is not able to differentiate any of the cases from the controls.
+With this data, the SVM model presented a lower accuracy than all CpGs, but a higher accuracy than other model. Only 4 controls were identified as CHARGE while 5 cases as controls. 
 
-### SVM training with newly selected features
+Summary: The first layer of the DNN network have reduced the differences between the different disease group but it is still sufficient to classify the individuals.
+
+## Dense layer 1 output
+
+### General pattern
+
+We evaluated whether the output of the dense 1 layer still contained signal to differentiate the individuals by disease.
 
 ```{r}
-sel_auto_out <- lapply(diseases, getFeatures, set = discov_auto_out, minFC = 0.05)
-sel_auto_out
+dnn4_dense1 <- read_delim(paste0(dnn4_fold, "dense.tsv"), delim = "\t")
+dnn4_dense1 <- data.matrix(dnn4_dense1)
+
+dnn4_dense1_se <- SummarizedExperiment(t(dnn4_dense1), colData = colData(se))
+rownames(dnn4_dense1_se) <- paste0("Features", seq_len(nrow(dnn4_dense1_se)))
+
+discov_dnn4_dense1 <- dnn4_dense1_se[, ! dnn4_dense1_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+valid_dnn4_dense1 <- dnn4_dense1_se[, dnn4_dense1_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+```
+
+We obtained `r nrow(dnn4_dense1_se)` features from the dense layer. Of those, `r sum(!apply(dnn4_dense1, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
+
+```{r}
+pc_dnn4_dense1 <- prcomp(dnn4_dense1)$x %>%
+  data.frame()
+rownames(pc_dnn4_dense1) <- colnames(dnn4_dense1_se)
+pc_dnn4_dense1$disease <- colData(se)[rownames(pc_dnn4_dense1), "disease"]
+pc_dnn4_dense1$sex <- colData(se)[rownames(pc_dnn4_dense1), "sex"]
+```
+
+```{r}
+pc_dnn4_dense1 %>% 
+  ggplot(aes(x = PC1, y = PC2, color = disease)) +
+  geom_point() + 
+  theme_bw() +
+  ggtitle("DNN4 model dense1 features - Disease")
+```
+
+The first 2 PCs does not allow differentiating cases from controls.
+
+```{r}
+pc_dnn4_dense1 %>% 
+  ggplot(aes(x = PC2, y = PC3, color = disease)) +
+  geom_point() + 
+  theme_bw() +
+  ggtitle("DNN4 model dense1 features - Disease")
+```
+
+Components PC2 and PC3 of features from DNN model4 dense1 cluster samples by disease type. Nonetheless, the clustering was better when using the all the CpGs or the layer 1 features.
+
+```{r}
+pc_dnn4_dense1 %>% 
+  ggplot(aes(x = PC1, y = PC2, color = sex)) +
+  geom_point() + 
+  theme_bw() +
+  ggtitle("DNN1 model dense1 features - Sex")
+```
+
+The first component is not separating sample by sex. 
+
+Summary: the features computed by the DNN model dense1 layer are capturing the difference in methylation due to disease rather than to sex.
+
+### Features selection
+
+Due to the high number of features without significant values, we remove them before selecting the features.
+
+```{r}
+sel_dnn4_dense1 <- lapply(diseases, getFeatures, set = discov_dnn4_dense1[!apply(dnn4_dense1, 2, function(x) all(x == 0)), ], minFC = 0)
+sel_dnn4_dense1_vec <- unique(unlist(sel_dnn4_dense1))
+```
+
+A total of `r length(sel_dnn4_dense1$CHARGE)` and `r length(sel_dnn4_dense1$Kabuki)` features had different methylation values in controls than in CHARGE or Kabuki, respectively.
+
+```{r}
+pheatmap(assay(discov_dnn4_dense1)[sel_dnn4_dense1_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(discov_dnn4_dense1)[, c("disease", "sex"), drop = FALSE]),
+         annotation_colors =  col_colors, 
+         show_rownames = FALSE)
 
 ```
 
-No features are associated with the diseases form the output of the autoencoder.
+Kabuki and CHARGE samples are in two groups, but they are merged with other control samples.
 
-Summary: The autoencoder is not recapitulating the signal regarding the disease.
+```{r}
+pheatmap(assay(valid_dnn4_dense1)[sel_dnn4_dense1_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(valid_dnn4_dense1)[, c("disease", "sex"), drop = FALSE]),
+         annotation_colors =  col_colors, 
+         show_rownames = FALSE)
 
-# Summary
+```
 
-The autoencoder is not recapitulating the signal regarding the disease. Thus, we are not improving the results by adding this step.
+CHARGE samples with variants are in a separate cluster. 
+
+### SVM model
+
+We repeated the SVM with the features selected in the previous step.
+
+```{r}
+svm_dnn4_dense1 <- trainSVM(set = discov_dnn4_dense1, feats = sel_dnn4_dense1_vec)
+
+pred_dnn4_dense1 <- predict(svm_dnn4_dense1, t(assay(dnn4_dense1_se)))
+table(pred_dnn4_dense1, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
+
+```
+
+The SVM model can identify case samples but confuse some controls with case samples. The performance is still good for samples with CHARGE variants.
+
+```{r}
+svm_dnn4_dense1b <- trainSVM(set = discov_dnn4_dense1, feats = rownames(dnn4_dense1_se)[!apply(dnn4_dense1, 2, function(x) all(x == 0))])
+
+pred_dnn4_dense1b <- predict(svm_dnn4_dense1b, t(assay(dnn4_dense1_se)))
+table(pred_dnn4_dense1b, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
+```
+
+When using all the features with values different than 0, the performance is reduced.
+
+Summary: The dense 1 layer still contains some information to differentiate cases and controls.
+
+## Dense layer 2 output
+
+### General pattern
+
+We evaluated whether the output of the dense 2 layer still contained signal to differentiate the individuals by disease.
+
+```{r}
+dnn4_dense2 <- read_delim(paste0(dnn4_fold, "dense_1.tsv"), delim = "\t")
+dnn4_dense2 <- data.matrix(dnn4_dense2)
+
+dnn4_dense2_se <- SummarizedExperiment(t(dnn4_dense2), colData = colData(se))
+rownames(dnn4_dense2_se) <- paste0("Features", seq_len(nrow(dnn4_dense2_se)))
+
+discov_dnn4_dense2 <- dnn4_dense2_se[, ! dnn4_dense2_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+valid_dnn4_dense2 <- dnn4_dense2_se[, dnn4_dense2_se$`sample type:ch1`  %in% c("Control for validation cohort",  "Validation cohort") ]
+```
+
+We obtained `r nrow(dnn4_dense2_se)` features from the dense layer. Of those, `r sum(!apply(dnn4_dense2, 2, function(x) all(x == 0)))` had values different than 0 in at least a sample.
+
+```{r}
+pc_dnn4_dense2 <- prcomp(dnn4_dense2)$x %>%
+  data.frame()
+rownames(pc_dnn4_dense2) <- colnames(dnn4_dense2_se)
+pc_dnn4_dense2$disease <- colData(se)[rownames(pc_dnn4_dense2), "disease"]
+pc_dnn4_dense2$sex <- colData(se)[rownames(pc_dnn4_dense2), "sex"]
+```
+
+```{r}
+pc_dnn4_dense2 %>% 
+  ggplot(aes(x = PC1, y = PC2, color = disease)) +
+  geom_point() + 
+  theme_bw() +
+  ggtitle("DNN4 model dense2 features - Disease")
+```
+
+We do not observe much difference in the first two PCs.
+```{r}
+pc_dnn4_dense2 %>% 
+  ggplot(aes(x = PC2, y = PC3, color = disease)) +
+  geom_point() + 
+  theme_bw() +
+  ggtitle("DNN4 model dense2 features - Disease")
+```
+
+Components PC2 and PC3 of features from DNN4 model dense2 cluster samples by disease type. Nonetheless, the clustering was better when using the all the CpGs.
+
+```{r}
+pc_dnn4_dense2 %>% 
+  ggplot(aes(x = PC1, y = PC2, color = sex)) +
+  geom_point() + 
+  theme_bw() +
+  ggtitle("DNN1 model dense2 features - Disease")
+```
+
+The first component is not separating sample by sex. 
+
+Summary: the features computed by the DNN model dense2 layer are capturing the difference in methylation due to disease rather than to sex.
+
+### Heatmaps
+
+We will select only those features where at least one sample has a values different than 0.
+
+```{r}
+sel_dnn4_dense2_vec <- rownames(discov_dnn4_dense2)[!apply(dnn4_dense2, 2, function(x) all(x == 0))]
+```
+
+
+```{r}
+pheatmap(assay(discov_dnn4_dense2)[sel_dnn4_dense2_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(discov_dnn4_dense2)[, c("disease", "sex"), drop = FALSE]),
+         annotation_colors =  col_colors, 
+         show_rownames = FALSE)
+
+```
+
+There are some cluster of case samples but they are not clearly separated from controls.
+```{r}
+pheatmap(assay(valid_dnn4_dense2)[sel_dnn4_dense2_vec, ], scale = "none", 
+         annotation_col  = data.frame(colData(valid_dnn4_dense2)[, c("disease", "sex"), drop = FALSE]),
+         annotation_colors =  col_colors, 
+         show_rownames = FALSE)
+
+```
+
+Some samples with variants are separated from controls.
+
+### SVM model
+
+We repeated the SVM with all the features from dense 2 different than 0.
+
+```{r}
+svm_dnn4_dense2 <- trainSVM(set = discov_dnn4_dense2, feats = sel_dnn4_dense2_vec)
+
+pred_dnn4_dense2 <- predict(svm_dnn4_dense2, t(assay(dnn4_dense2_se)))
+table(pred_dnn4_dense2, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
+
+```
+
+The SVM is struggling to differentiate the case samples even in the training set. Thus, we are not separating cases from controls.
+
+
+```{r}
+discov_dnn4_dense2_df <- data.frame(t(assay(discov_dnn4_dense2[sel_dnn4_dense2_vec, ])))
+discov_dnn4_dense2_df$class <- as.character(discov_dnn4_dense2$disease)
+smoteKab <- SMOTE(discov_dnn4_dense2_df[discov_dnn4_dense2_df$class != "CHARGE", -ncol(discov_dnn4_dense2_df) ], discov_dnn4_dense2_df$class[discov_dnn4_dense2_df$class != "CHARGE"] )
+
+smoteCharge <- SMOTE(discov_dnn4_dense2_df[discov_dnn4_dense2_df$class != "Kabuki", -ncol(discov_dnn4_dense2_df) ], discov_dnn4_dense2_df$class[discov_dnn4_dense2_df$class != "Kabuki"] )
+
+mixTab <- rbind(smoteCharge$syn_data, smoteKab$syn_data, discov_dnn4_dense2_df)
+
+
+svm_dnn4_dense2_smote <- svm(factor(class) ~ ., data = mixTab)
+pred_dnn4_dense2_smote <- predict(svm_dnn4_dense2_smote, t(assay(dnn4_dense2_se)))
+table(pred_dnn4_dense2_smote, se$disease, se$`sample type:ch1` %in% c("Control for validation cohort",  "Validation cohort"))
+
+```
+
+Increasing the sample size with SMOTE leads to detecting most samples as Kabuki.
+
+## TCGA data
+
+We explored the features generated by the DNN4 model in the original TCGA data.
+
+
+```{r}
+tcga4_fold <- "../results/TCGA_bioDNN/2021-11-22/model_features/bioDNN_v4/"
+tcga4_conc <- read_delim(paste0(tcga4_fold, "concatenate.tsv"), delim = "\t")
+tcga4_conc <- data.matrix(tcga4_conc)
+sum(!apply(tcga4_conc, 2, function(x) all(x == 0)))
+```
+`r round(mean(!apply(tcga4_conc, 2, function(x) all(x == 0)))*100, 1)`% of features of layer1 have meaningful values in TCGA.
+
+
+
+```{r}
+tcga4_dnn <- read_delim(paste0(tcga4_fold, "dense.tsv"), delim = "\t")
+tcga4_dnn <- data.matrix(tcga4_dnn)
+sum(!apply(tcga4_dnn, 2, function(x) all(x == 0)))
+```
+
+`r round(mean(!apply(tcga4_dnn, 2, function(x) all(x == 0)))*100, 1)`% of features of dense layer 1 have meaningful values in TCGA.
+
+
+```{r}
+tcga4_dnn1 <- read_delim(paste0(tcga4_fold, "dense_1.tsv"), delim = "\t")
+tcga4_dnn1 <- data.matrix(tcga4_dnn1)
+sum(!apply(tcga4_dnn1, 2, function(x) all(x == 0)))
+```
+`r round(mean(!apply(tcga4_dnn1, 2, function(x) all(x == 0)))*100, 1)`% of features of dense layer 2 have meaningful values in TCGA.
+
+
+
+# Summary of all models
+
+```{r}
+getTab <- function(inf_class, real_class, type){
+  
+  logvec <- type %in% c("Control for validation cohort",  "Validation cohort")
+  tab <- table(inf_class[logvec], droplevels(real_class[logvec]))
+  tab
+}
+getAccuracy <- function(inf_class, real_class, type){
+  tab <- getTab(inf_class, real_class, type)
+  round(sum(diag(tab))/sum(tab), 2)
+}
+getSP <- function(inf_class, real_class, type){
+  tab <- getTab(inf_class, real_class, type)
+  round(tab[1, 1]/sum(tab[, 1]), 2)
+}
+
+getSN <- function(inf_class, real_class, type, ncol){
+  tab <- getTab(inf_class, real_class, type)
+  round(tab[ncol, ncol]/sum(tab[, ncol]), 2)
+}
+```
+
+
+```{r}
+df_cpgs <- data.frame(models = c("All CpGs", "TCGA CpGs"), 
+                 description = c("All CpGs from GEO", "CpGs after TCGA filtering"),
+                 N_CpGs = c(nrow(se), nrow(se_filt)),
+                 sel_CpGs = c(length(sel_cpgs_vec), length(sel_cpgs_filt_vec)),
+                 accuracy = c(getAccuracy(pred_cpgs, se$disease,se$`sample type:ch1`), 
+                              getAccuracy(pred_cpgs_filt, se$disease,se$`sample type:ch1`)),
+                 SP = c(getSP(pred_cpgs, se$disease,se$`sample type:ch1`),
+                        getSP(pred_cpgs_filt, se$disease,se$`sample type:ch1`)),
+                 SN_CHARGE = c(getSN(pred_cpgs, se$disease,se$`sample type:ch1`, 2),
+                               getSN(pred_cpgs_filt, se$disease,se$`sample type:ch1`, 2)),
+                 SN_Kabuki = c(getSN(pred_cpgs, se$disease,se$`sample type:ch1`, 3),
+                               getSN(pred_cpgs_filt, se$disease,se$`sample type:ch1`, 3)))
+
+df_cpgs %>% t() %>% kable()
+```
+
+
+```{r}
+df_models <- data.frame(models = c("DNN1", "DNN2", "DNN3", "DNN4"),
+                        Neurons_gene = c(2, 2, 1, 1),
+                        Neurons_chromosome = c(100, 100, 1000, 1000),
+                        CpGs_chromosome = c("Intergenic", "All", "Intergenic", "All"),
+                        accuracy_layer1 = c(getAccuracy(pred_dnn1_conc, se$disease,se$`sample type:ch1`), 
+                              getAccuracy(pred_dnn2_conc, se$disease,se$`sample type:ch1`),
+                              getAccuracy(pred_dnn3_conc, se$disease,se$`sample type:ch1`), 
+                              getAccuracy(pred_dnn4_conc, se$disease,se$`sample type:ch1`)),
+                 SP_layer1 = c(getSP(pred_dnn1_conc, se$disease,se$`sample type:ch1`), 
+                              getSP(pred_dnn2_conc, se$disease,se$`sample type:ch1`),
+                              getSP(pred_dnn3_conc, se$disease,se$`sample type:ch1`), 
+                              getSP(pred_dnn4_conc, se$disease,se$`sample type:ch1`)),
+                 SN_CHARGE_layer1 = c(getSN(pred_dnn1_conc, se$disease,se$`sample type:ch1`, 2),
+                              getSN(pred_dnn2_conc, se$disease,se$`sample type:ch1`, 2),
+                              getSN(pred_dnn3_conc, se$disease,se$`sample type:ch1`, 2), 
+                              getSN(pred_dnn4_conc, se$disease,se$`sample type:ch1`, 2)),
+                 SN_Kabuki_layer1 = c(getSN(pred_dnn1_conc, se$disease,se$`sample type:ch1`, 3),
+                              getSN(pred_dnn2_conc, se$disease,se$`sample type:ch1`, 3),
+                              getSN(pred_dnn3_conc, se$disease,se$`sample type:ch1`, 3), 
+                              getSN(pred_dnn4_conc, se$disease,se$`sample type:ch1`, 3)),
+                 accuracy_dense1 = c(getAccuracy(pred_dnn1_dense1, se$disease,se$`sample type:ch1`), 
+                              getAccuracy(pred_dnn2_dense1, se$disease,se$`sample type:ch1`),
+                              getAccuracy(pred_dnn3_dense1, se$disease,se$`sample type:ch1`), 
+                              getAccuracy(pred_dnn4_dense1, se$disease,se$`sample type:ch1`)),
+                 SP_dense1 = c(getSP(pred_dnn1_dense1, se$disease,se$`sample type:ch1`), 
+                              getSP(pred_dnn2_dense1, se$disease,se$`sample type:ch1`),
+                              getSP(pred_dnn3_dense1, se$disease,se$`sample type:ch1`), 
+                              getSP(pred_dnn4_dense1, se$disease,se$`sample type:ch1`)),
+                 SN_CHARGE_dense1 = c(getSN(pred_dnn1_dense1, se$disease,se$`sample type:ch1`, 2),
+                              getSN(pred_dnn2_dense1, se$disease,se$`sample type:ch1`, 2),
+                              getSN(pred_dnn3_dense1, se$disease,se$`sample type:ch1`, 2), 
+                              getSN(pred_dnn4_dense1, se$disease,se$`sample type:ch1`, 2)),
+                 SN_Kabuki_dense1 = c(getSN(pred_dnn1_dense1, se$disease,se$`sample type:ch1`, 3),
+                              getSN(pred_dnn2_dense1, se$disease,se$`sample type:ch1`, 3),
+                              getSN(pred_dnn3_dense1, se$disease,se$`sample type:ch1`, 3), 
+                              getSN(pred_dnn4_dense1, se$disease,se$`sample type:ch1`, 3)),
+                                  accuracy_dense1b = c(getAccuracy(pred_dnn1_dense1b, se$disease,se$`sample type:ch1`), 
+                              getAccuracy(pred_dnn2_dense1b, se$disease,se$`sample type:ch1`),
+                              getAccuracy(pred_dnn3_dense1b, se$disease,se$`sample type:ch1`), 
+                              getAccuracy(pred_dnn4_dense1b, se$disease,se$`sample type:ch1`)),
+                 SP_dense1b = c(getSP(pred_dnn1_dense1b, se$disease,se$`sample type:ch1`), 
+                              getSP(pred_dnn2_dense1b, se$disease,se$`sample type:ch1`),
+                              getSP(pred_dnn3_dense1b, se$disease,se$`sample type:ch1`), 
+                              getSP(pred_dnn4_dense1b, se$disease,se$`sample type:ch1`)),
+                 SN_CHARGE_dense1b = c(getSN(pred_dnn1_dense1b, se$disease,se$`sample type:ch1`, 2),
+                              getSN(pred_dnn2_dense1b, se$disease,se$`sample type:ch1`, 2),
+                              getSN(pred_dnn3_dense1b, se$disease,se$`sample type:ch1`, 2), 
+                              getSN(pred_dnn4_dense1b, se$disease,se$`sample type:ch1`, 2)),
+                 SN_Kabuki_dense1b = c(getSN(pred_dnn1_dense1b, se$disease,se$`sample type:ch1`, 3),
+                              getSN(pred_dnn2_dense1b, se$disease,se$`sample type:ch1`, 3),
+                              getSN(pred_dnn3_dense1b, se$disease,se$`sample type:ch1`, 3), 
+                              getSN(pred_dnn4_dense1b, se$disease,se$`sample type:ch1`, 3)),
+                 accuracy_dense2 = c(getAccuracy(pred_dnn1_dense2, se$disease,se$`sample type:ch1`), 
+                              getAccuracy(pred_dnn2_dense2, se$disease,se$`sample type:ch1`),
+                              getAccuracy(pred_dnn3_dense2, se$disease,se$`sample type:ch1`), 
+                              getAccuracy(pred_dnn4_dense2, se$disease,se$`sample type:ch1`)),
+                 SP_dense2 = c(getSP(pred_dnn1_dense2, se$disease,se$`sample type:ch1`), 
+                              getSP(pred_dnn2_dense2, se$disease,se$`sample type:ch1`),
+                              getSP(pred_dnn3_dense2, se$disease,se$`sample type:ch1`), 
+                              getSP(pred_dnn4_dense2, se$disease,se$`sample type:ch1`)),
+                 SN_CHARGE_dense2 = c(getSN(pred_dnn1_dense2, se$disease,se$`sample type:ch1`, 2),
+                              getSN(pred_dnn2_dense2, se$disease,se$`sample type:ch1`, 2),
+                              getSN(pred_dnn3_dense2, se$disease,se$`sample type:ch1`, 2), 
+                              getSN(pred_dnn4_dense2, se$disease,se$`sample type:ch1`, 2)),
+                 SN_Kabuki_dense = c(getSN(pred_dnn1_dense2, se$disease,se$`sample type:ch1`, 3),
+                              getSN(pred_dnn2_dense2, se$disease,se$`sample type:ch1`, 3),
+                              getSN(pred_dnn3_dense2, se$disease,se$`sample type:ch1`, 3), 
+                              getSN(pred_dnn4_dense2, se$disease,se$`sample type:ch1`, 3)))
+
+df_models %>% t() %>% kable()
+
+```
+
+

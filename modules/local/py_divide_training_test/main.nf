@@ -16,6 +16,7 @@ process PY_DIVIDE_TRAIN_TEST {
     input:
     path('assays.h5')
     val(prop)
+    val(autoencoder)
 
     output:
     path("train.pb"), emit: train
@@ -23,6 +24,6 @@ process PY_DIVIDE_TRAIN_TEST {
 
     script:
     """
-    divide_train_test.py $prop
+    divide_train_test.py $prop $autoencoder
     """
 }

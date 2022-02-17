@@ -58,17 +58,12 @@ A.close()
 
 # Train model ####
 model = model.model_generator_train(x_train, y_train, params)
-opt = Adam(learning_rate = params.alpha)
-model.compile(loss='categorical_crossentropy',
-  optimizer = opt,
-  metrics = ['categorical_accuracy'])
-callbacks = [EarlyStopping(monitor = 'val_loss', patience = 5, verbose = 1)]
-
+model.summary()
 
 history = model.fit(x_train, y_train,
   batch_size = params.batch_size,
   epochs = params.epochs,
-  verbose = 1, callbacks = callbacks, validation_data = (x_test, y_test), workers = jobs)
+  verbose = 1, validation_data = (x_test, y_test), workers = jobs)
 
 history_dict = history.history
 pickle.dump( history_dict, open( name + "_history_model.pb", "wb" ), protocol = 4 )

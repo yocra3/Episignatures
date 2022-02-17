@@ -1,0 +1,112 @@
+---
+title: "Evaluation of tcga DNN model1"
+author: "Carlos Ruiz"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+
+## Introduction
+
+In this model, we will evaluate the first configuration of the bio DNN model1 to classify TCGA samples.
+
+```{r}
+library(tidyverse)
+fold <- "../results/DNN/2021-11-15/model_trained/v1/DNN_"
+
+confusion <- read_table2(paste0(fold, "confussionMatrix.tsv"))
+report <- read_table(paste0(fold, "classificationReport.txt"), skip = 1, col_names = FALSE )
+eval <- read_table2(paste0(fold, "training_evaluation.tsv"), col_names =  FALSE)
+```
+
+## Training evaluation
+
+```{r}
+eval_df <- eval[, -1] %>%
+  t() %>%
+  data.frame() %>%
+  tibble()
+colnames(eval_df) <- eval$X1
+
+
+eval_df2 <- eval_df %>%
+  mutate(Epoch = seq_len(nrow(eval_df))) %>%
+  gather(Category, Score, 1:4)
+
+eval_df2 %>%
+  filter(Category %in% c("val_loss", "loss")) %>%
+  mutate(Dataset = ifelse(Category == "loss", "Training", "Validation")) %>%
+  ggplot(aes(x = Epoch, y = Score, group = Dataset, color = Dataset)) +
+  geom_line() +
+  scale_y_log10(name = "Loss (log10)") +
+  theme_bw()
+```
+
+Loss function drops greatly between epochs 1 to 4 in both training and validation dataset. From epoch 5, it is slowly reduced, with a higher lost in training than in test, suggesting a possible overfitting.
+
+```{r}
+eval_df2 %>%
+  filter(Category %in% c("categorical_accuracy", "val_categorical_accuracy")) %>%
+  mutate(Dataset = ifelse(Category == "categorical_accuracy", "Training", "Validation")) %>%
+  ggplot(aes(x = Epoch, y = Score, group = Dataset, color = Dataset)) +
+  geom_line() +
+  ylab("Accuracy") +
+  theme_bw()
+```
+
+Accuracy follows the same pattern than loss, with a great improvement between epochs 1 to 4, and small improvements from this point. Higher increase in training accuracy compared with validation suggest a potential overfitting.
+
+## Classification
+
+```{r}
+colnames(report) <- c("Category", "Precision", "Recall", "f1-score", "Support")
+tail(report, 3)
+```
+
+We obtained an accuracy and recall higher than 90%.
+
+```{r}
+filter(report, !Category %in% c("accuracy", "macro", "weighted")) %>%
+  arrange(Precision)
+```
+Precision ranged from 0% to 100%, depending on the cancer type, with most tumors with a precision higher than 90%. On the other hand, although recall was very low from some tumors (0%), for most tumors was higher than 90%.
+
+
+```{r fig.height = 11, fig.width = 11, fig.align = "center"}
+confusion %>%
+  mutate(True = colnames(.)) %>%
+  gather(Predicted, N, 1:34) %>%
+  ggplot(aes(x = Predicted, y = True, fill = N)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%1.0f", N)), vjust = 1) +
+   scale_fill_gradient(low = "white",
+                      high = "blue") +
+  theme(legend.position = "none",
+        axis.text.x  = element_text(angle = 45, vjust=0.5))
+
+```
+
+Most of the are correctly classified. In order to explore the possible problems, we will focus on those tumors having more than 5 individuals wrongly classified:
+
+```{r}
+col <- which(colSums(confusion > 5) > 1)
+row <- which(rowSums(confusion > 5) > 1)
+index <- sort(unique(c(col, row, 25)))
+confusion[index, index] %>%
+  mutate(True = colnames(.)) %>%
+  gather(Predicted, N, seq_len(length(index))) %>%
+  ggplot(aes(x = Predicted, y = True, fill = N)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%1.0f", N)), vjust = 1) +
+   scale_fill_gradient(low = "white",
+                      high = "blue") +
+  theme(legend.position = "none",
+        axis.text.x  = element_text(angle = 45, vjust=0.5))
+
+```
+
+The plot show the greatest confussion between the groups. Most READ cancer were classified as COAD, two types of colon cancer. Some confussion were also observed between LGG and GBM tumors, two types of brain cancer. Finally, ESCA tumor were wrongly classified in HNSC, tumors from stomach cancer. 

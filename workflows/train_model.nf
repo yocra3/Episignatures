@@ -14,6 +14,7 @@ date = java.time.LocalDate.now()
 params.name = ""
 params.test_prop = 0.2
 params.step = "train"
+params.autoencoder = "No"
 
 params.network_params = "a.txt"
 params.network = "a.txt"
@@ -24,6 +25,8 @@ params.probes = "a.txt"
 params.cpgmap = "a.txt"
 params.cpgslist = "a.txt"
 params.inputcpgs = "a.txt"
+params.gene_mask = "a.txt"
+params.checkpoints = "a.txt"
 
 name = params.name
 test_prop = params.test_prop
@@ -41,6 +44,8 @@ probes = file("${params.probes}")
 cpgmap = file("${params.cpgmap}")
 dnn_structure = file("${params.cpgslist}")
 input_cpgs = file("${params.inputcpgs}")
+gene_mask = file("${params.gene_mask}")
+checkpoints = file("${params.checkpoints}")
 
 random_config = file("${params.config}")
 params_name = "v1"
@@ -54,6 +59,10 @@ include { PY_EXPORT_RESULTS } from '../modules/local/py_export_results/main.nf' 
 include { EXTRACT_MODEL_FEATURES } from '../modules/local/extract_model_features/main.nf' addParams( options: [publish_dir: "${name}/${params_name}/model_features/"])
 include { PY_EXTRACT_BIOMODEL_FEATURES } from '../modules/local/py_extract_biomodel_features/main.nf' addParams( options: [publish_dir: "${name}/${params_name}/model_features/"])
 include { PY_TRANSFER_INPUT_BIODNN } from '../modules/local/py_transfer_input_biodnn/main.nf' addParams( options: [publish_dir: "preprocess/${name}/${params_name}/"])
+
+include { PY_EXPORT_RESULTS_BIO } from '../modules/local/py_export_results_bio/main.nf' addParams( options: [publish_dir: "${name}/${params_name}/model_trained/"])
+include { PRUNE_MODEL } from '../modules/local/py_prune_model/main.nf' addParams( options: [publish_dir: "${name}/${params_name}/model_trained/"])
+
 
 include { TRANSFER_LEARNING } from '../modules/local/transfer_learning/main.nf' addParams( options: [publish_dir: "${name}/${params_name}/transfer_learning/"])
 include { PY_EXPORT_RESULTS as PY_EXPORT_RESULTS_TRANSFER} from '../modules/local/py_export_results/main.nf' addParams( options: [publish_dir: "${name}/${params_name}/model_trained/"])
@@ -75,6 +84,9 @@ include { PY_RESHAPE_HDF5 } from '../modules/local/py_reshape_hdf5/main.nf' addP
 include { PY_COMBINE_METHY_LABEL_HDF5 } from '../modules/local/py_combine_methy_label_hdf5/main.nf' addParams( options: [publish_dir: "preprocess/${name}/${params_name}"])
 include { TRAIN_AUTOENCODER_MODEL } from '../modules/local/py_train_autoencoder_model/main.nf' addParams( options: [publish_dir: "${name}/${params_name}/autoencoder_trained/"])
 include { PY_TRAIN_DNN_BIOLOGICALMODEL } from '../modules/local/py_train_dnn_biologicalmodel/main.nf' addParams( options: [publish_dir: "${name}/${params_name}/model_trained/"])
+include { PY_CREATE_GENE_MASK } from '../modules/local/py_create_gene_mask/main.nf' addParams( options: [publish_dir: "${name}/${params_name}/model_trained/"])
+include { TRAIN_PATHWAY_MODEL } from '../modules/local/py_train_pathway_model/main.nf' addParams( options: [publish_dir: "${name}/${params_name}/model_trained/"])
+
 
 
 workflow  {
@@ -104,10 +116,16 @@ workflow  {
     WF_RANDOM_SEARCH(ch_input_hdf5, test_prop, network, random_config, name)
   }
   if (step == "train"){
-    WF_TRAIN_MODEL(ch_input_hdf5, test_prop, network, network_params, name)
+    WF_TRAIN_MODEL(ch_input_hdf5, test_prop, network, network_params, name, params.autoencoder)
+  }
+  if (step == "prune"){
+    WF_PRUNE_MODEL(ch_input_hdf5, test_prop, model, network_params, name, params.autoencoder)
   }
   if (step == "train_bio"){
-    WF_TRAIN_BIOLOGICALMODEL(ch_input_hdf5, test_prop, network_params, probes, cpgmap, name)
+    WF_TRAIN_BIOLOGICALMODEL(ch_input_hdf5, test_prop, network, network_params, probes, cpgmap, name)
+  }
+  if (step == "train_biopathways"){
+    WF_TRAIN_PATHWAY(ch_input_hdf5, test_prop, network, network_params, probes, cpgmap, name, params.autoencoder)
   }
   if (step == "transfer"){
     WF_TRANSFER_MODEL(ch_input_hdf5, test_prop, model, labels, name, layer)
@@ -117,11 +135,13 @@ workflow  {
   }
   if (step == "features_bio"){
     ch_input = Channel.of("${name}").concat(ch_input_hdf5).concat(ch_input_hdf5_se)
-    WF_EXTRACT_DNN_TRANSF(ch_input,   probes, dnn_structure, input_cpgs, model)
+    WF_EXTRACT_DNN_TRANSF(ch_input,   probes, gene_mask, checkpoints, network, network_params)
   }
-  if (step == "autoencoder"){
-    WF_AUTOENCODER_MODEL(ch_input_hdf5, test_prop, model, labels, name)
-  }
+  // if (step == "autoencoder"){
+  //   //  Old code for autoencoder after CNN
+  //   // WF_AUTOENCODER_MODEL(ch_input_hdf5, test_prop, model, labels, name)
+  //   WF_AUTOENCODER_MODEL(ch_input_hdf5, test_prop, network, network_params, name)
+  // }
 }
 
 
@@ -147,6 +167,7 @@ workflow WF_TRAIN_BIOLOGICALMODEL {
   take:
   ch_input_hdf5
   test_prop
+  network
   network_params
   probes
   cpgmap
@@ -154,8 +175,46 @@ workflow WF_TRAIN_BIOLOGICALMODEL {
 
   main:
   PY_DIVIDE_TRAIN_TEST ( ch_input_hdf5, test_prop )
-  PY_TRAIN_DNN_BIOLOGICALMODEL( ch_input_hdf5, PY_DIVIDE_TRAIN_TEST.out.train, PY_DIVIDE_TRAIN_TEST.out.test, network_params, probes, cpgmap, name )
-  PY_EXPORT_RESULTS( ch_input_hdf5, PY_TRAIN_DNN_BIOLOGICALMODEL.out.history, PY_TRAIN_DNN_BIOLOGICALMODEL.out.model, PY_TRAIN_DNN_BIOLOGICALMODEL.out.labels, PY_TRAIN_DNN_BIOLOGICALMODEL.out.test, name )
+  PY_CREATE_GENE_MASK(network_params, probes, cpgmap)
+  PY_TRAIN_DNN_BIOLOGICALMODEL( ch_input_hdf5, PY_DIVIDE_TRAIN_TEST.out.train, PY_DIVIDE_TRAIN_TEST.out.test, network, network_params, PY_CREATE_GENE_MASK.out.mask, name )
+  PY_EXPORT_RESULTS_BIO( ch_input_hdf5, PY_TRAIN_DNN_BIOLOGICALMODEL.out.history, PY_TRAIN_DNN_BIOLOGICALMODEL.out.labels, PY_DIVIDE_TRAIN_TEST.out.test, PY_CREATE_GENE_MASK.out.mask, PY_TRAIN_DNN_BIOLOGICALMODEL.out.checkpoints, network, network_params, name )
+
+}
+
+workflow WF_TRAIN_PATHWAY {
+
+  take:
+  ch_input_hdf5
+  test_prop
+  network
+  network_params
+  probes
+  pathmap
+  name
+  autoencoder
+
+  main:
+  PY_DIVIDE_TRAIN_TEST ( ch_input_hdf5, test_prop, autoencoder )
+  TRAIN_PATHWAY_MODEL( ch_input_hdf5, PY_DIVIDE_TRAIN_TEST.out.train, PY_DIVIDE_TRAIN_TEST.out.test, probes, pathmap, network, network_params, name )
+  PY_EXPORT_RESULTS( ch_input_hdf5, TRAIN_PATHWAY_MODEL.out.history, TRAIN_PATHWAY_MODEL.out.model, TRAIN_PATHWAY_MODEL.out.labels, PY_DIVIDE_TRAIN_TEST.out.test, name, autoencoder )
+
+}
+
+
+workflow WF_PRUNE_MODEL {
+
+  take:
+  ch_input_hdf5
+  test_prop
+  model
+  network_params
+  name
+  autoencoder
+
+  main:
+  PY_DIVIDE_TRAIN_TEST ( ch_input_hdf5, test_prop, autoencoder )
+  PRUNE_MODEL( ch_input_hdf5, PY_DIVIDE_TRAIN_TEST.out.train, PY_DIVIDE_TRAIN_TEST.out.test, model, network_params, name )
+  PY_EXPORT_RESULTS( ch_input_hdf5, PRUNE_MODEL.out.history, PRUNE_MODEL.out.model, PRUNE_MODEL.out.labels, PY_DIVIDE_TRAIN_TEST.out.test, name, autoencoder )
 
 }
 
@@ -167,11 +226,12 @@ workflow WF_TRAIN_MODEL {
   network
   network_params
   name
+  autoencoder
 
   main:
-  PY_DIVIDE_TRAIN_TEST ( ch_input_hdf5, test_prop )
+  PY_DIVIDE_TRAIN_TEST ( ch_input_hdf5, test_prop, autoencoder )
   TRAIN_MODEL( ch_input_hdf5, PY_DIVIDE_TRAIN_TEST.out.train, PY_DIVIDE_TRAIN_TEST.out.test, network, network_params, name )
-  PY_EXPORT_RESULTS( ch_input_hdf5, TRAIN_MODEL.out.history, TRAIN_MODEL.out.model, TRAIN_MODEL.out.labels, PY_DIVIDE_TRAIN_TEST.out.test, name )
+  PY_EXPORT_RESULTS( ch_input_hdf5, TRAIN_MODEL.out.history, TRAIN_MODEL.out.model, TRAIN_MODEL.out.labels, PY_DIVIDE_TRAIN_TEST.out.test, name, autoencoder )
 
 }
 
@@ -198,13 +258,17 @@ workflow WF_AUTOENCODER_MODEL {
   ch_input_hdf5
   test_prop
   model
-  labels
+  params
+  // labels
   name
+  //  Old code for autoencoder after CNN
 
   main:
   PY_DIVIDE_TRAIN_TEST ( ch_input_hdf5, test_prop )
-  TRAIN_AUTOENCODER_MODEL( PY_DIVIDE_TRAIN_TEST.out.train, PY_DIVIDE_TRAIN_TEST.out.test, model, name )
-  PY_EXPORT_RESULTS_AUTOENCOD( ch_input_hdf5, TRAIN_AUTOENCODER_MODEL.out.old_history, TRAIN_AUTOENCODER_MODEL.out.model_old,  labels, PY_DIVIDE_TRAIN_TEST.out.test, name )
+  TRAIN_AUTOENCODER_MODEL( PY_DIVIDE_TRAIN_TEST.out.train, PY_DIVIDE_TRAIN_TEST.out.test, model, params, name )
+
+  // TRAIN_AUTOENCODER_MODEL( PY_DIVIDE_TRAIN_TEST.out.train, PY_DIVIDE_TRAIN_TEST.out.test, model, name )
+  // PY_EXPORT_RESULTS_AUTOENCOD( ch_input_hdf5, TRAIN_AUTOENCODER_MODEL.out.old_history, TRAIN_AUTOENCODER_MODEL.out.model_old,  labels, PY_DIVIDE_TRAIN_TEST.out.test, name )
 
 }
 
@@ -301,15 +365,15 @@ workflow WF_EXTRACT_DNN_TRANSF {
   take:
   ch_input_hdf5
   cpg_median
-  dnn_structure
-  input_cpgs
-  model
+  gene_mask
+  checkpoints
+  network
+  network_params
 
   main:
+
   R_SUBSTITUTE_MISSING_HDF5( ch_input_hdf5.collect() )
   R_SELECT_INPUTCPG_HDF5( R_SUBSTITUTE_MISSING_HDF5.out.res , cpg_median )
-
-  PY_TRANSFER_INPUT_BIODNN(R_SELECT_INPUTCPG_HDF5.out.h5, dnn_structure, input_cpgs)
-  PY_EXTRACT_BIOMODEL_FEATURES(PY_TRANSFER_INPUT_BIODNN.out.input, model)
+  PY_EXTRACT_BIOMODEL_FEATURES(R_SELECT_INPUTCPG_HDF5.out.h5, gene_mask, checkpoints, network, network_params)
 
 }

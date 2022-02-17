@@ -4,6 +4,9 @@
 
 # Session Data files
 .RData
+*.Rdata
+*.RData
+
 
 # User-specific files
 .Ruserdata
@@ -44,8 +47,12 @@ vignettes/*.pdf
 # Report files
 *.html
 
+# Figures
+*.png
+
 # Data folders
 data/
 results/
 work/
 GDCdata/
+figures/
