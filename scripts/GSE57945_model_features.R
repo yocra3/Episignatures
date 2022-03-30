@@ -16,12 +16,13 @@ library(pheatmap)
 library(caTools)
 library(e1071)
 library(hipathia)
+library(sva)
 
 
 makePCdf <- function(seobj){
   pc <- prcomp(t(assay(seobj)))
   pcdf <- data.frame(pc$x[, 1:10])
-  pcdf <- cbind(pcdf, colData(seobj)[, c("diagnosis2", "age", "sex")])
+  pcdf <- cbind(pcdf, colData(seobj)[, c("diagnosis2", "age", "sex", "age_group")])
 }
 makePCplot <- function(pcdf, var){
   ggplot(pcdf, aes_string(x = "PC1", y = "PC2", col = var)) +
@@ -44,7 +45,7 @@ makeHeatmap <- function(seObj){
   pheatmap(assay(seObj), scale = "row",
            annotation_col  = data.frame(colData(seObj)[, c("diagnosis2", "sex"), drop = FALSE]),
            annotation_colors =  col_colors,
-           show_rownames = FALSE)
+           show_rownames = TRUE)
 
 }
 trainSVM <-  function(seobj){
@@ -53,11 +54,11 @@ trainSVM <-  function(seobj){
   model_svm <- svm(pathClass ~ ., df)
 }
 
-getPathwayCor <- function(path){
+getPathwayCor <- function(path, se_pc, se_path){
   path2 <- gsub(".", ":", path, fixed = TRUE)
   genes <- subset(path_map, PathwayID == path2)$Symbol
-  pc <- prcomp(t(assay(vsd.uc[rownames(vsd.uc) %in% genes,])), rank. = 1)$x[, 1]
-  cor(pc, t(assay(se.kegg.uc[path,])))
+  pc <- prcomp(t(assay(se_pc[rownames(se_pc) %in% genes,])), rank. = 1)$x[, 1]
+  cor(pc, t(assay(se_path[path,])))
 
 }
 
@@ -66,7 +67,7 @@ getPathwayCor <- function(path){
 
 
 ## Load vsd data ####
-vsd.ori <- loadHDF5SummarizedExperiment("results/SRP042228/", prefix = "vsd_norm_TCGAgenes_")
+vsd.ori <- loadHDF5SummarizedExperiment("results/SRP042228/", prefix = "vsd_norm_TCGA_codingGenes_")
 vsd.ori$diagnosis2 <- relevel(factor(vsd.ori$diagnosis2), ref = "Control")
 ## Create train and test indexes
 sample <- sample.split(vsd.ori$diagnosis2, SplitRatio = .80)
@@ -78,51 +79,101 @@ mod <- model.matrix(~diagnosis2 + age + sex, colData(vsd.ori))
 lmori <- lmFit(assay(vsd.ori), mod) %>% eBayes()
 tab.ori <- topTable(lmori, coef = 2:4, n = Inf)
 featsori <- rownames(subset(tab.ori, adj.P.Val  < 0.05))
-
-## See age
-tab.ori.age <- topTable(lmori, coef = 5, n = Inf)
-featsori.age <- rownames(subset(tab.ori.age, adj.P.Val  < 0.05))
-
-
-## See sex
-tab.ori.sex <- topTable(lmori, coef = 6, n = Inf)
-featsori.sex <- rownames(subset(tab.ori.sex, adj.P.Val  < 0.05))
+tab.ori.icd <- topTable(lmori, coef = 3, n = Inf)
+tab.ori.ccd <- topTable(lmori, coef = 2, n = Inf)
+tab.ori.uc <- topTable(lmori, coef = 4, n = Inf)
+# #
+# # ## See age
+# # tab.ori.age <- topTable(lmori, coef = 5, n = Inf)
+# # featsori.age <- rownames(subset(tab.ori.age, adj.P.Val  < 0.05))
+# #
+#
+# ## See sex
+# tab.ori.sex <- topTable(lmori, coef = 6, n = Inf)
+# featsori.sex <- rownames(subset(tab.ori.sex, adj.P.Val  < 0.05))
 
 ## Make PCs
 pc.ori <- makePCdf(vsd.ori)
-pc.ori.feats <- makePCdf(vsd.ori[featsori, ])
+# pc.ori.feats <- makePCdf(vsd.ori[featsori, ])
 
-png("figures/SRP042228.raw.pca.png")
-makePCplot(pc.ori, "diagnosis2")
-dev.off()
 
-makePCplot(pc.ori, "age")
-makePCplot(pc.ori, "sex")
-
-makePCplot(pc.ori.feats, "diagnosis2")
-makePCplot(pc.ori.feats, "age")
-makePCplot(pc.ori.feats, "sex")
-
-## Heatmaps
-#makeHeatmap(vsd.ori)
-makeHeatmap(vsd.ori[featsori, ])
+# sample2 <- sample[pc.ori$PC2 > -50]
+# #
+# #
+# # png("figures/SRP042228.raw.pca.png")
+# # makePCplot(pc.ori, "diagnosis2")
+# # dev.off()
+# #
+# # makePCplot(pc.ori, "age_group")
+# # makePCplot(pc.ori, "sex")
+# #
+# # makePCplot(pc.ori.feats, "diagnosis2")
+# # makePCplot(pc.ori.feats, "age")
+# # makePCplot(pc.ori.feats, "sex")
+#
+# ## Heatmaps
+# #makeHeatmap(vsd.ori)
+# makeHeatmap(vsd.ori[featsori, ])
 
 ## SVM
 svm.ori <- trainSVM(vsd.ori[featsori, sample])
 pred.ori <- predict(svm.ori, t(assay(vsd.ori[featsori, !sample])))
 table(prediction = pred.ori, real = vsd.ori$diagnosis2[!sample] )
 
-## UC
-vsd.uc <- vsd.ori[, vsd.ori$diagnosis != "CD"]
-vsd.uc$diagnosis2 <- droplevels(vsd.uc$diagnosis2)
-mod.uc <- model.matrix(~diagnosis2 + age + sex, colData(vsd.uc ))
-lm.uc <- lmFit(assay(vsd.uc), mod.uc) %>% eBayes()
-tab.uc <- topTable(lm.uc, coef = 2, n = Inf)
-feats.uc  <- rownames(subset(tab.uc  , adj.P.Val  < 0.1))
+svm.ori.paper <- trainSVM(vsd.ori[featsori, sample & vsd.ori$diagnosis2 %in% c("cCD", "UC")])
+pred.ori.paper <- predict(svm.ori.paper, t(assay(vsd.ori[featsori, !sample & vsd.ori$diagnosis2 %in% c("cCD", "UC")])))
+table(prediction = pred.ori.paper, real = vsd.ori$diagnosis2[!sample & vsd.ori$diagnosis2 %in% c("cCD", "UC")] )
 
-## DNN kegg
-se.kegg <- readFeatures("results/SRP042228/kegg_v3.1/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
-paths <- read.table("results/TCGA_gexp_norm/kegg_v3.1/model_trained/pathways_names.txt", header = TRUE, sep = "\t")
+
+#
+# vsd.ori2 <- vsd.ori[, pc.ori$PC2 > -50]
+# svm.ori2 <- trainSVM(vsd.ori2[featsori, sample2])
+# pred.ori2 <- predict(svm.ori2, t(assay(vsd.ori2[featsori, !sample2])))
+# table(prediction = pred.ori2, real = vsd.ori2$diagnosis2[!sample2] )
+#
+# ## UC
+# vsd.uc <- vsd.ori[, vsd.ori$diagnosis != "CD"]
+# vsd.uc$diagnosis2 <- droplevels(vsd.uc$diagnosis2)
+# mod.uc <- model.matrix(~diagnosis2 + age + sex, colData(vsd.uc ))
+# lm.uc <- lmFit(assay(vsd.uc), mod.uc) %>% eBayes()
+# tab.uc <- topTable(lm.uc, coef = 2, n = Inf)
+# feats.uc  <- rownames(subset(tab.uc  , adj.P.Val  < 0.1))
+#
+
+### Compute SVA
+mod0 <- model.matrix(~ diagnosis2, colData(vsd.ori))
+svobj <- sva(data.matrix(assay(vsd.ori)), mod, mod0)
+
+ori.sv <- residuals(lmFit(assay(vsd.ori), svobj$sv), assay(vsd.ori))
+vsd.sv <- vsd.ori
+assay(vsd.sv) <- ori.sv
+pc.sv <- makePCdf(vsd.sv)
+cot <- prcomp(t(assay(vsd.sv))()
+
+makePCplot(pc.sv, "diagnosis2")
+makePCplot(pc.sv, "age_group")
+makePCplot(pc.sv, "sex")
+
+lmori.sv <- lmFit(assay(vsd.ori), cbind(mod, svobj$sv)) %>% eBayes()
+tab.ori.sv <- topTable(lmori.sv, coef = 2:4, n = Inf)
+featsori.sv <- rownames(subset(tab.ori.sv, adj.P.Val  < 0.05))
+tab.sv.ccd <- topTable(lmori.sv, coef = 2, n = Inf)
+tab.sv.icd <- topTable(lmori.sv, coef = 3, n = Inf)
+write.table(file = "icd_genes.txt", rownames(subset(tab.sv.icd, adj.P.Val < 0.05)), quote = FALSE, row.names = FALSE, col.names = FALSE)
+
+## SVM
+svm.ori.sv <- trainSVM(vsd.sv[featsori.sv, sample ])
+pred.ori.sv <- predict(svm.ori.sv, t(assay(vsd.sv[featsori.sv, !sample])))
+table(prediction = pred.ori.sv, real = vsd.sv$diagnosis2[!sample] )
+
+svm.ori.sv.paper <- trainSVM(vsd.sv[featsori.sv, sample & vsd.ori$diagnosis2 %in% c("cCD", "UC")])
+pred.ori.sv.paper <- predict(svm.ori.sv.paper, t(assay(vsd.sv[featsori.sv, !sample & vsd.ori$diagnosis2 %in% c("cCD", "UC")])))
+table(prediction = pred.ori.sv.paper, real = vsd.sv$diagnosis2[!sample & vsd.ori$diagnosis2 %in% c("cCD", "UC")] )
+
+
+## DNN kegg - pre ####
+se.kegg <- readFeatures("results/SRP042228/kegg_filt2_v6.2/model_features/prune_low_magnitude_dense_1.tsv", vsd.ori)
+paths <- read.table("results/TCGA_gexp_combat_coding_std/kegg_filt2_v3.2/model_trained/pathways_names.txt", header = TRUE)
 rownames(se.kegg)  <- gsub(":", ".",as.character( paths[, 1]))
 
 ## SVM
@@ -130,14 +181,95 @@ svm.kegg <- trainSVM(se.kegg[, sample])
 pred.kegg <- predict(svm.kegg, t(assay(se.kegg[, !sample])))
 table(prediction = pred.kegg, real = vsd.ori$diagnosis2[!sample] )
 
-lm.kegg <- lmFit(assay(se.kegg), mod) %>% eBayes()
-tab.kegg <- topTable(lm.kegg, coef = 2:4, n = Inf)
-feats.kegg  <- rownames(subset(tab.kegg , adj.P.Val  < 0.05))
+svm.kegg.paper <- trainSVM(se.kegg[, sample & vsd.ori$diagnosis2 %in% c("cCD", "UC")])
+pred.kegg.paper <- predict(svm.kegg.paper, t(assay(se.kegg[, !sample & vsd.ori$diagnosis2 %in% c("cCD", "UC")])))
+table(prediction = pred.kegg.paper , real = vsd.ori$diagnosis2[!sample & vsd.ori$diagnosis2 %in% c("cCD", "UC")] )
 
-svm.kegg.f <- trainSVM(se.kegg[feats.kegg, sample])
-pred.kegg.f <- predict(svm.kegg.f, t(assay(se.kegg[feats.kegg, !sample])))
-table(prediction = pred.kegg.f, real = vsd.ori$diagnosis2[!sample] )
+svobj.kegg <- sva(data.matrix(assay(se.kegg)), mod, mod0)
+kegg.sv <- se.kegg
+assay(kegg.sv) <-  residuals(lmFit(assay(se.kegg), svobj.kegg$sv), assay(se.kegg))
 
+svm.kegg.sv <- trainSVM(kegg.sv [, sample])
+pred.kegg.sv <- predict(svm.kegg.sv, t(assay(kegg.sv [, !sample])))
+table(prediction = pred.kegg.sv, real = vsd.ori$diagnosis2[!sample] )
+
+svm.kegg.sv.paper <- trainSVM(kegg.sv[, sample & vsd.ori$diagnosis2 %in% c("cCD", "UC")])
+pred.kegg.sv.paper <- predict(svm.kegg.sv.paper, t(assay(kegg.sv[, !sample & vsd.ori$diagnosis2 %in% c("cCD", "UC")])))
+table(prediction = pred.kegg.sv.paper, real = kegg.sv$diagnosis2[!sample & vsd.ori$diagnosis2 %in% c("cCD", "UC")] )
+#
+#
+# se.kegg2 <- se.kegg[, pc.ori$PC2 > -50]
+# svm.kegg.f <- trainSVM(se.kegg2[, sample2])
+# pred.kegg.f <- predict(svm.kegg.f, t(assay(se.kegg2[, !sample2])))
+# table(prediction = pred.kegg.f, real = se.kegg2$diagnosis2[!sample2] )
+
+# lm.kegg <- lmFit(assay(se.kegg), mod) %>% eBayes()
+# tab.kegg <- topTable(lm.kegg, coef = 2:4, n = Inf)
+# feats.kegg  <- rownames(subset(tab.kegg , adj.P.Val  < 0.05))
+#
+
+lm.kegg.sv <- lmFit(assay(se.kegg), cbind(mod, svobj$sv)) %>% eBayes()
+tab.kegg.sv <- topTable(lm.kegg.sv, coef = 2:4, n = Inf)
+feats.kegg.sv  <- rownames(subset(tab.kegg.sv , adj.P.Val  < 0.05))
+tab.kegg.icd.sv <- topTable(lm.kegg.sv, coef = 3, n = Inf)
+
+
+kegg.map <- read.table("results/preprocess/kegg_filt_gene_map.tsv", header = TRUE)
+kegg.map$pathID <- gsub(":", ".", kegg.map$PathwayID )
+
+makeHeatmap(vsd.ori[rownames(vsd.ori) %in% subset(kegg.map, pathID == "path.hsa00603")$Symbol,
+          vsd.ori$diagnosis2 %in% c("Control", "iCD")])
+
+p <- sapply(rownames(tab.kegg.icd.sv) , function(i) mean(subset(tab.sv.icd, rownames(tab.sv.icd) %in% subset(kegg.map, pathID == i)$Symbol)$adj.P.Val < 0.05))
+plot(-log10(tab.kegg.icd.sv$P.Value), p)
+
+tab.kegg.icd.sv$prop_genes <- p
+tab.kegg.icd.sv$p_log <- -log10(tab.kegg.icd.sv$P.Value)
+
+summary(robustbase::lmrob(prop_genes ~ p_log, tab.kegg.icd.sv, subset = !is.na(prop_genes) & P.Value < 0.05, k.max = 1000))
+summary(lm(prop_genes ~ p_log, tab.kegg.icd.sv, subset = !is.na(prop_genes) & P.Value < 0.5))
+
+png("figures/SRP042228.corr_pathwaysiCD_propGenes.png")
+tab.kegg.icd.sv %>%
+  filter(P.Value < 0.05) %>%
+  ggplot(aes(x = p_log, y = prop_genes)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_bw() +
+  xlab("-log10 p-value pathway") +
+  ylab("Proportion of genes significant")
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+
+pc.kegg.sv <- makePCdf(kegg.sv)
+
+makeHeatmap(kegg.sv[, kegg.sv$diagnosis2 != "iCD"])
+
+makePCplot(pc.kegg.sv, "age_group")
+makePCplot(pc.kegg.sv, "diagnosis2")
+
+tab.kegg.ccd <- topTable(lm.kegg, coef = 2, n = Inf)
+tab.kegg.icd <- topTable(lm.kegg, coef = 3, n = Inf)
+tab.kegg.uc <- topTable(lm.kegg, coef = 4, n = Inf)
+
+tab.kegg.icd.sv <- topTable(lm.kegg.sv, coef = 3, n = Inf)
+
+svm.kegg.sv <- trainSVM(kegg.sv[, sample])
+pred.kegg.sv <- predict(svm.kegg.sv, t(assay(kegg.sv[, !sample])))
+table(prediction = pred.kegg.sv, real = kegg.sv$diagnosis2[!sample] )
+table(prediction = predict(svm.kegg.sv, t(assay(kegg.sv[, sample]))), real = kegg.sv$diagnosis2[sample] )
+
+makeHeatmap(se.kegg)
 
 pc.kegg <- makePCdf(se.kegg)
 
@@ -153,6 +285,7 @@ lm.kegg.uc <- lmFit(assay(se.kegg.uc), mod.uc) %>% eBayes()
 tab.kegg.uc <- topTable(lm.kegg.uc , coef = 2, n = Inf)
 feats.kegg.uc  <- rownames(subset(tab.kegg.uc  , adj.P.Val  < 0.05))
 
+feats.kegg.uc  <- rownames(tab.kegg.uc)[1:10]
 
 png("figures/SRP042228.kegg_uc.heatmap.png")
 makeHeatmap(se.kegg.uc[feats.kegg.uc , ])
@@ -162,7 +295,19 @@ png("figures/SRP042228.kegg_uc.heatmap_all.png")
 makeHeatmap(se.kegg.uc)
 dev.off()
 
+## Correlations KEGG vs PC1 ####
 path_map <- read.table("results/preprocess/kegg_gene_map.tsv", header = TRUE )
+
+### All
+path.cores.all <- sapply(rownames(se.kegg), getPathwayCor, se_pc = vsd.ori, se_path = se.kegg)
+names(path.cores.all) <- rownames(se.kegg)
+
+png("figures/SRP042228.vsd_genes.kegg.cor.png")
+hist(path.cores.all, breaks = 40)
+dev.off()
+
+
+### Control vs UC
 genes1 <- subset(path_map, PathwayID == "path:hsa01521")$Symbol
 
 
@@ -194,23 +339,23 @@ cor(cot2$x[, 1], t(assay(se.kegg.uc["path.hsa04657",])))
 summary(lm(cot2$x[, 1] ~ vsd.uc$diagnosis2 + vsd.uc$sex + vsd.uc$age))
 summary(lm(t(assay(se.kegg.uc["path.hsa04657",])) ~ vsd.uc$diagnosis2 + vsd.uc$sex + vsd.uc$age))
 
-path.cores <- sapply(rownames(se.kegg.uc), getPathwayCor)
-names(path.cores) <- rownames(se.kegg.uc)
+path.cores.uc <- sapply(rownames(se.kegg.uc), getPathwayCor, vsd.uc, se.kegg.uc)
+names(path.cores.uc) <- rownames(se.kegg.uc)
 path_n <- sapply(rownames(se.kegg.uc), function(x) sum(gsub(":", ".", path_map$PathwayID) == x))
-cor(path_n, abs(path.cores ))
+cor(path_n, abs(path.cores.uc ))
 
 png("figures/SRP042228.uc.vsd_genes.kegg.cor.png")
-hist(path.cores, breaks = 40)
+hist(path.cores.uc, breaks = 40)
 dev.off()
 
 path_n2 <- path_n
 path_n2[path_n2 > 500] <- 500
 png("figures/SRP042228.uc.vsd_genes.kegg.cor_vs_n.png")
-plot(path.cores, path_n2)
+plot(path.cores.uc, path_n2)
 dev.off()
 
 
-## DNN hipathia
+## DNN hipathia ####
 se.kegg.hip <- readFeatures("results/SRP042228/hipathia_v3.1/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
 paths2 <- read.table("results/TCGA_gexp_norm/hipathia_v3.1/model_trained/pathways_names.txt", header = TRUE, sep = "\t")
 
@@ -244,7 +389,7 @@ png("figures/SRP042228.kegg_dnn.pca.png")
 makePCplot(pc.kegg, "diagnosis2")
 dev.off()
 
-## Hipathia
+## Hipathia ####
 trans_data <- translate_data(vsd.ori, "hsa")
 exp_data <- normalize_data(trans_data)
 pathways <- load_pathways(species = "hsa")
@@ -281,7 +426,7 @@ pred.hip.f <- predict(svm.hip.f, t(assay(hip.paths2[feats.hip2, !sample])))
 table(prediction = pred.hip.f, real = vsd.ori$diagnosis2[!sample] )
 
 
-## Compute correlations
+## Compute correlations Hipathia vs DNN Hipathi #####
 cors <- cor(t(assay(se.kegg.hip)), t(assay(hip.paths)))
 png("figures/SRP042228.hip_dnn.corr.png")
 hist(diag(cors))

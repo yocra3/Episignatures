@@ -16,6 +16,7 @@ library(pheatmap)
 library(caTools)
 library(e1071)
 library(hipathia)
+library(rjson)
 
 
 makePCdf <- function(seobj, vars){
@@ -55,7 +56,7 @@ trainSVM <-  function(seobj){
 
 computeTPR <- function(tumor, se){
 
-  sub.se <- se[, se$project_id == tumor & se.kegg1$sample_type %in% c("Primary Tumor", "Solid Tissue Normal")]
+  sub.se <- se[, se$project_id == tumor & se$sample_type %in% c("Primary Tumor", "Solid Tissue Normal")]
   mod <- model.matrix(~sample_type, colData(sub.se))
   paths.lm <- lmFit(assay(sub.se), mod)
   paths.lm <- eBayes(paths.lm)
@@ -63,6 +64,46 @@ computeTPR <- function(tumor, se){
   sum(paths.top[cancer.kegg, ]$adj.P.Val < 0.05)
 
 
+}
+
+
+computeLimma <- function(tumor, se){
+
+  sub.se <- se[, se$project_id == tumor & se$sample_type %in% c("Primary Tumor", "Solid Tissue Normal")]
+  mod <- model.matrix(~sample_type, colData(sub.se))
+  paths.lm <- lmFit(t(scale(t(assay(sub.se)))), mod)
+  paths.lm <- eBayes(paths.lm)
+  paths.top <- topTable(paths.lm, n = Inf, coef = 2)
+  paths.top$pathID <- rownames(paths.top)
+  paths.top$project <- tumor
+  paths.top
+
+}
+
+
+computeLimmaFPR <- function(tumor, se){
+
+  sub.se <- se[, se$project_id == tumor & se$sample_type %in% c("Solid Tissue Normal")]
+  sub.se$var <- sample(c("A", "B"), ncol(sub.se), replace = TRUE)
+  mod <- model.matrix(~var, colData(sub.se))
+  paths.lm <- lmFit(t(scale(t(assay(sub.se)))), mod)
+  paths.lm <- eBayes(paths.lm)
+  paths.top <- topTable(paths.lm, n = Inf, coef = 2)
+  paths.top$pathID <- rownames(paths.top)
+  paths.top$project <- tumor
+  paths.top
+
+}
+
+
+getTumorPaths <- function(tumor, se){
+
+  sub.se <- se[, se$project_id == tumor & se$sample_type %in% c("Primary Tumor", "Solid Tissue Normal")]
+  mod <- model.matrix(~sample_type, colData(sub.se))
+  paths.lm <- lmFit(assay(sub.se), mod)
+  paths.lm <- eBayes(paths.lm)
+  paths.top <- topTable(paths.lm, n = Inf, coef = 2)
+  paths.top[cancer.kegg, ]
 }
 
 computeTPRhipathia <- function(tumor, se){
@@ -87,107 +128,251 @@ read_training <- function(path, name){
 }
 
 ## Compare trainings
-auto.vals <- read_training("results/TCGA_gexp_norm/autoencod_v2.1/model_trained/TCGA_gexp_norm_training_evaluation.txt", "autoencoder")
-raw.vals <- read_training("results/TCGA_gexp_norm/kegg_v1.3/model_trained/TCGA_gexp_norm_training_evaluation.txt", "kegg - base")
-drop20.vals <- read_training("results/TCGA_gexp_norm/kegg_v2.1/model_trained/TCGA_gexp_norm_training_evaluation.txt", "kegg - dropout 20%")
-drop50.vals <- read_training("results/TCGA_gexp_norm/kegg_v2.2/model_trained/TCGA_gexp_norm_training_evaluation.txt", "kegg - dropout 50%")
-primed.vals <- read_training("results/TCGA_gexp_norm/kegg_v3.1/model_trained/TCGA_gexp_norm_training_evaluation.txt", "kegg - primed")
-hipathia.vals <- read_training("results/TCGA_gexp_norm/hipathia_v3.1/model_trained/TCGA_gexp_norm_training_evaluation.txt", "hipathia - primed")
+## No primed values
+# raw.vals <- read_training("results/TCGA_gexp_norm/kegg_v1.3/model_trained/TCGA_gexp_norm_training_evaluation.txt", "kegg - base")
+# drop20.vals <- read_training("results/TCGA_gexp_norm/kegg_v2.1/model_trained/TCGA_gexp_norm_training_evaluation.txt", "kegg - dropout 20%")
+# drop50.vals <- read_training("results/TCGA_gexp_norm/kegg_v2.2/model_trained/TCGA_gexp_norm_training_evaluation.txt", "kegg - dropout 50%")
+# all.vals <- Reduce(rbind, list(auto.vals, raw.vals, drop20.vals, drop50.vals, primed.vals,hipathia.vals))
 
-all.vals <- Reduce(rbind, list(auto.vals, raw.vals, drop20.vals, drop50.vals, primed.vals,hipathia.vals))
+auto.base <- read_training("results/TCGA_gexp_combat_coding_std/autoencod_v2.2/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Pathway")
+auto.post <- read_training("results/TCGA_gexp_combat_coding_std/autoencod_v3.2/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Pathway + Dense")
+auto.pre <- read_training("results/TCGA_gexp_combat_coding_std/autoencod_v3.1/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Dense + Pathway")
+auto.pre_post <- read_training("results/TCGA_gexp_combat_coding_std/autoencod_v4.1/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Dense + Pathway + Dense")
+
+base <- read_training("results/TCGA_gexp_combat_coding_std/kegg_filt2_v3.6/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Pathway")
+post <- read_training("results/TCGA_gexp_combat_coding_std/kegg_filt2_v4.3/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Pathway + Dense")
+pre <- read_training("results/TCGA_gexp_combat_coding_std/kegg_filt2_v6.2/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Dense + Pathway")
+pre_post <- read_training("results/TCGA_gexp_combat_coding_std/kegg_filt2_v5.3/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Dense + Pathway + Dense")
+
+all.vals <- rbind(Reduce(rbind, list(base, post, pre, pre_post)) %>%
+  mutate(model = factor(model, levels = c("Pathway", "Pathway + Dense", "Dense + Pathway", "Dense + Pathway + Dense" ))) %>%
+  mutate(type = "KEGG pathways"),
+  Reduce(rbind, list(auto.base, auto.post, auto.pre, auto.pre_post)) %>%
+    mutate(model = factor(model, levels = c("Pathway", "Pathway + Dense", "Dense + Pathway", "Dense + Pathway + Dense" ))) %>%
+    mutate(type = "Autoencoder"))
 
 
 
-png("figures/TCGA.kegg.training.png", width = 1200)
+png("figures/TCGA.kegg.training.png", width = 900)
 ggplot(all.vals, aes(x = epoch, y = mse, color = measure, group = measure)) +
   geom_point() +
   geom_line() +
-  facet_wrap(~ model) +
+  facet_grid(type ~ model) +
   theme_bw()
 dev.off()
 
-png("figures/TCGA.kegg.training2.png", width = 1200)
-filter(all.vals, mse < 0.005) %>%
+
+png("figures/TCGA.kegg.trainingb.png", width = 600)
+ggplot(all.vals, aes(x = epoch, y = mse, color = measure, group = measure)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(model ~ type) +
+  theme_bw()
+dev.off()
+
+
+png("figures/TCGA.kegg.training.epoch10.png", width = 900)
+filter(all.vals, epoch > 10) %>%
 ggplot(aes(x = epoch, y = mse, color = measure, group = measure)) +
   geom_point() +
   geom_line() +
-  facet_wrap(~ model) +
+  facet_grid(type ~ model) +
   theme_bw()
 dev.off()
 
+png("figures/TCGA.kegg.training.epoch10b.png", width = 600)
+filter(all.vals, epoch > 10) %>%
+ggplot(aes(x = epoch, y = mse, color = measure, group = measure)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(model ~ type) +
+  theme_bw()
+dev.off()
+
+## Hipathia structure
+# hipathia.vals <- read_training("results/TCGA_gexp_norm/hipathia_v3.1/model_trained/TCGA_gexp_norm_training_evaluation.txt", "hipathia - primed")
+
+
+kegg.annot <- fromJSON(file = "data/kegg_pathways.json")
+kegg.df <- lapply(kegg.annot$children, function(x) {
+  top_cat <- x$name
+  paths.df <- lapply(x$children, function(y){
+    cat2 <- y$name
+    paths <- sapply(y$children, function(z) z$name)
+    data.frame(top_cat = top_cat, category = cat2, path = paths)
+  })
+  Reduce(rbind, paths.df) %>%
+    as_tibble()
+}) %>%
+ Reduce(rbind, .)
+kegg.df <- kegg.df %>%
+  mutate(pathID = paste0("path:hsa", substring(path, 0, 5)),
+          pathName = gsub("^[0-9]*  ", "", path))
 
 ## Load vsd data ####
-vsd.ori <- loadHDF5SummarizedExperiment("results/TCGA_gexp/", prefix = "vsd_norm")
+vsd.ori <- loadHDF5SummarizedExperiment("results/TCGA_gexp_combat_coding/", prefix = "vsd_norm")
 
 cancer.keg <- c("hsa04010", "hsa04310", "hsa04350", "hsa04370", "hsa04630", "hsa04024", "hsa04151", "hsa04150", "hsa04110", "hsa04210", "hsa04115", "hsa04510", "hsa04520", "hsa03320")
 cancer.kegg <- paste0("path:", cancer.keg)
-paths <- read.table("results/TCGA_gexp_kegg/v1.1/model_trained/pathways_names.txt", header = TRUE)
-
 tumors <- c("TCGA-BLCA", "TCGA-BRCA", "TCGA-COAD", "TCGA-HNSC", "TCGA-KIRC", "TCGA-KIRP", "TCGA-LIHC", "TCGA-LUAD", "TCGA-LUSC", "TCGA-PRAD", "TCGA-THCA", "TCGA-UCEC")
 
+paths <- read.table("results/TCGA_gexp_combat_coding_std/kegg_filt2_v3.6/model_trained/pathways_names.txt", header = TRUE)
+paths.vec <- as.character(paths[, 1])
+cancer.kegg <- cancer.kegg[cancer.kegg %in% paths.vec]
 
-## Load autoencoder kegg 1
-se.kegg1 <- readFeatures("results/TCGA_gexp_norm/kegg_v1.3/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
-rownames(se.kegg1) <- as.character(paths[, 1])
+## Pathways
+se.base <- readFeatures("results/TCGA_gexp_combat_coding_std/kegg_filt2_v3.6/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
+rownames(se.base) <- as.character(paths[, 1])
+tpr_base <- sapply(tumors, computeTPR, se =  se.base )
+limma_base <- lapply(tumors, computeLimma, se =  se.base )
+limma_base_join <- Reduce(rbind, limma_base) %>%
+  left_join(kegg.df, by = "pathID")
 
-brca1 <- se.kegg1[, se.kegg1$project_id == "TCGA-BRCA" & se.kegg1$sample_type != "Metastatic"]
+a <- select(limma_base_join, pathName, logFC, project) %>% spread(project, logFC)
+mat <- a[, -1] %>% data.matrix()
+rownames(mat) <- a$pathName
 
-mod <- model.matrix(~sample_type, colData(brca1))
-paths.lm1 <- lmFit(assay(brca1), mod)
-paths.lm1 <- eBayes(paths.lm1)
-paths.top1 <- topTable(paths.lm1, n = Inf, coef = 2)
-paths.top1[cancer.kegg, ]
-sum(paths.top1[cancer.kegg, ]$adj.P.Val < 0.05)
-
-makeHeatmap(brca1[cancer.kegg, ])
-
-tpr1 <- sapply(tumors, computeTPR, se =  se.kegg1)
-
-
-
-## Load autoencoder kegg 2.1
-se.kegg2.1 <- readFeatures("results/TCGA_gexp_kegg/v2.1/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
-rownames(se.kegg2.1) <- as.character(paths[, 1])
-
-brca2.1 <- se.kegg2.1[, se.kegg2.1$project_id == "TCGA-BRCA" & se.kegg2.1$sample_type != "Metastatic"]
-
-mod <- model.matrix(~sample_type, colData(brca2.1))
-paths.lm2.1 <- lmFit(assay(brca2.1), mod)
-paths.lm2.1 <- eBayes(paths.lm2.1)
-paths.top2.1 <- topTable(paths.lm2.1, n = Inf, coef = 2)
-paths.top2.1[cancer.kegg, ]
-sum(paths.top2.1[cancer.kegg, ]$adj.P.Val < 0.05)
-tpr2.1 <- sapply(tumors, computeTPR, se =  se.kegg2.1)
-
-## Load autoencoder kegg 2.2
-se.kegg2.2 <- readFeatures("results/TCGA_gexp_kegg/v2.2/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
-rownames(se.kegg2.2) <- as.character(paths[, 1])
-
-brca2.2 <- se.kegg2.2[, se.kegg2.2$project_id == "TCGA-BRCA" & se.kegg2.2$sample_type != "Metastatic"]
-
-mod <- model.matrix(~sample_type, colData(brca2.2))
-paths.lm2.2 <- lmFit(assay(brca2.2), mod)
-paths.lm2.2 <- eBayes(paths.lm2.2)
-paths.top2.2 <- topTable(paths.lm2.2, n = Inf, coef = 2)
-paths.top2.2[cancer.kegg, ]
-sum(paths.top2.2[cancer.kegg, ]$adj.P.Val < 0.05)
-tpr2.2 <- sapply(tumors, computeTPR, se =  se.kegg2.2)
+kegg.df2 <- kegg.df  %>% data.frame()
+rownames(kegg.df2) <- kegg.df2$pathName
 
 
+png("figures/TCGA.base.pathways_assoc_heatmap.png", width = 2500, height = 1500)
+pheatmap(t(mat), annotation_col = kegg.df2[rownames(mat), c("top_cat", "category")], scale = "none")
+dev.off()
 
-## Load autoencoder kegg 2.4
-se.kegg2.4 <- readFeatures("results/TCGA_gexp_kegg/v2.4/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
-rownames(se.kegg2.4) <- as.character(paths[, 1])
 
-brca2.4 <- se.kegg2.4[, se.kegg2.4$project_id == "TCGA-BRCA" & se.kegg2.4$sample_type != "Metastatic"]
+## Pathways + Dense
+se.post <- readFeatures("results/TCGA_gexp_combat_coding_std/kegg_filt2_v4.3/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
+rownames(se.post) <- as.character(paths[, 1])
+tpr_post <- sapply(tumors, computeTPR, se =  se.post )
 
-mod <- model.matrix(~sample_type, colData(brca2.4))
-paths.lm2.4 <- lmFit(assay(brca2.4), mod)
-paths.lm2.4 <- eBayes(paths.lm2.4)
-paths.top2.4 <- topTable(paths.lm2.4, n = Inf, coef = 2)
-paths.top2.4[cancer.kegg, ]
-sum(paths.top2.4[cancer.kegg, ]$adj.P.Val < 0.05)
-tpr2.4 <- sapply(tumors, computeTPR, se =  se.kegg2.4)
+## Dense + Pathways
+se.pre <- readFeatures("results/TCGA_gexp_combat_coding_std/kegg_filt2_v6.2/model_features/prune_low_magnitude_dense_1.tsv", vsd.ori)
+rownames(se.pre) <- as.character(paths[, 1])
+tpr_pre <- sapply(tumors, computeTPR, se =  se.pre )
+limma_pre <- lapply(tumors, computeLimma, se =  se.pre )
+limma_pre_join <- Reduce(rbind, limma_pre) %>%
+  left_join(kegg.df, by = "pathID")
+
+a <- select(limma_pre_join, pathName, logFC, project) %>% spread(project, logFC)
+mat <- a[, -1] %>% data.matrix()
+rownames(mat) <- a$pathName
+
+kegg.df2 <- kegg.df  %>% data.frame()
+rownames(kegg.df2) <- kegg.df2$pathName
+
+
+png("figures/TCGA.pathways_assoc_heatmap.png", width = 2500, height = 1500)
+pheatmap(t(mat), annotation_col = kegg.df2[rownames(mat), c("top_cat", "category")], scale = "none")
+dev.off()
+
+limma_fpr <- lapply(tumors, computeLimmaFPR, se =  se.pre )
+limma_fpr_join <- Reduce(rbind, limma_fpr) %>%
+  left_join(kegg.df, by = "pathID")
+
+
+
+## Dense + Pathways + Dense
+se.pre_post <- readFeatures("results/TCGA_gexp_combat_coding_std/kegg_filt2_v5.3/model_features/prune_low_magnitude_dense_1.tsv", vsd.ori)
+rownames(se.pre_post) <- as.character(paths[, 1])
+tpr_pre_post <- sapply(tumors, computeTPR, se =  se.pre_post )
+
+
+
+## Plots
+png("figures/TCGA.kegg_comb.tpr.png")
+Reduce(rbind, list(tpr_base, tpr_post, tpr_pre, tpr_pre_post)) %>%
+  as_tibble() %>%
+  mutate(Model = factor(c("Pathway", "Pathway + Dense", "Dense + Pathway", "Dense + Pathway + Dense"),
+                          levels = c("Pathway", "Pathway + Dense", "Dense + Pathway", "Dense + Pathway + Dense"))) %>%
+  gather(tumor, pos, seq_len(length(tumors))) %>%
+  mutate(TPR = pos/length(cancer.kegg)) %>%
+    ggplot(aes(x = Model, fill = factor(TPR))) +
+    geom_bar() +
+    theme_bw()
+dev.off()
+
+
+
+## From here, old!!
+##################################################################################################
+paths <- read.table("results/TCGA_gexp_kegg/v1.1/model_trained/pathways_names.txt", header = TRUE)
+
+
+## Load autoencoder kegg 2.6 - primed + droput 20%
+se.kegg2.6 <- readFeatures("results/TCGA_gexp_norm/kegg_v2.6/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
+rownames(se.kegg2.6) <- as.character(paths[, 1])
+
+brca2.6 <- se.kegg2.6[, se.kegg2.6$project_id == "TCGA-BRCA" & se.kegg2.6$sample_type != "Metastatic"]
+
+mod <- model.matrix(~sample_type, colData(brca2.6))
+paths.lm2.6 <- lmFit(assay(brca2.6), mod)
+paths.lm2.6 <- eBayes(paths.lm2.6)
+paths.top2.6 <- topTable(paths.lm2.6, n = Inf, coef = 2)
+paths.top2.6[cancer.kegg, ]
+sum(paths.top2.6[cancer.kegg, ]$adj.P.Val < 0.05)
+tpr2.6 <- sapply(tumors, computeTPR, se =  se.kegg2.6)
+
+paths2.6 <- lapply(tumors, getTumorPaths, se =  se.kegg2.6)
+pathMat2.6 <- sapply(paths2.6, function(x) x$adj.P.Val < 0.05)
+colnames(pathMat2.6) <- tumors
+rownames(pathMat2.6) <- cancer.keg
+
+## Load autoencoder kegg 2.7 - primed + droput 50%
+se.kegg2.7 <- readFeatures("results/TCGA_gexp_norm/kegg_v2.7/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
+rownames(se.kegg2.7) <- as.character(paths[, 1])
+
+brca2.7 <- se.kegg2.7[, se.kegg2.7$project_id == "TCGA-BRCA" & se.kegg2.7$sample_type != "Metastatic"]
+
+mod <- model.matrix(~sample_type, colData(brca2.7))
+paths.lm2.7 <- lmFit(assay(brca2.7), mod)
+paths.lm2.7 <- eBayes(paths.lm2.7)
+paths.top2.7 <- topTable(paths.lm2.7, n = Inf, coef = 2)
+paths.top2.7[cancer.kegg, ]
+sum(paths.top2.7[cancer.kegg, ]$adj.P.Val < 0.05)
+tpr2.7 <- sapply(tumors, computeTPR, se =  se.kegg2.7)
+paths2.7 <- lapply(tumors, getTumorPaths, se =  se.kegg2.7)
+pathMat2.7 <- sapply(paths2.7, function(x) x$adj.P.Val < 0.05)
+colnames(pathMat2.7) <- tumors
+rownames(pathMat2.7) <- cancer.keg
+
+
+## Load autoencoder kegg 2.7b - primed + droput 50%
+se.kegg2.7b <- readFeatures("results/TCGA_gexp_norm/kegg_v2.7b/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
+rownames(se.kegg2.7b) <- as.character(paths[, 1])
+
+## Load autoencoder kegg 2.8 - primed + droput 75%
+se.kegg2.8 <- readFeatures("results/TCGA_gexp_norm/kegg_v2.8/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
+rownames(se.kegg2.8) <- as.character(paths[, 1])
+
+brca2.8 <- se.kegg2.8[, se.kegg2.8$project_id == "TCGA-BRCA" & se.kegg2.8$sample_type != "Metastatic"]
+
+mod <- model.matrix(~sample_type, colData(brca2.8))
+paths.lm2.8 <- lmFit(assay(brca2.8), mod)
+paths.lm2.8 <- eBayes(paths.lm2.8)
+paths.top2.8 <- topTable(paths.lm2.8, n = Inf, coef = 2)
+paths.top2.8[cancer.kegg, ]
+sum(paths.top2.8[cancer.kegg, ]$adj.P.Val < 0.05)
+tpr2.8 <- sapply(tumors, computeTPR, se =  se.kegg2.8)
+paths2.8 <- lapply(tumors, getTumorPaths, se =  se.kegg2.8)
+pathMat2.8 <- sapply(paths2.8, function(x) x$adj.P.Val < 0.05)
+colnames(pathMat2.8) <- tumors
+rownames(pathMat2.8) <- cancer.keg
+
+## Load autoencoder kegg 2.8 - primed + droput 90%
+se.kegg2.9 <- readFeatures("results/TCGA_gexp_norm/kegg_v2.9/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
+rownames(se.kegg2.9) <- as.character(paths[, 1])
+
+brca2.9 <- se.kegg2.9[, se.kegg2.9$project_id == "TCGA-BRCA" & se.kegg2.9$sample_type != "Metastatic"]
+
+mod <- model.matrix(~sample_type, colData(brca2.9))
+paths.lm2.9 <- lmFit(assay(brca2.9), mod)
+paths.lm2.9 <- eBayes(paths.lm2.9)
+paths.top2.9 <- topTable(paths.lm2.9, n = Inf, coef = 2)
+paths.top2.9[cancer.kegg, ]
+sum(paths.top2.9[cancer.kegg, ]$adj.P.Val < 0.05)
+tpr2.9 <- sapply(tumors, computeTPR, se =  se.kegg2.9)
+
 
 
 ## Load autoencoder kegg 3
@@ -204,6 +389,10 @@ paths.top3[cancer.kegg, ]
 
 sum(paths.top3[cancer.kegg, ]$adj.P.Val < 0.05)
 tpr3 <- sapply(tumors, computeTPR, se =  se.kegg3)
+paths3 <- lapply(tumors, getTumorPaths, se =  se.kegg3)
+pathMat3 <- sapply(paths3, function(x) x$adj.P.Val < 0.05)
+colnames(pathMat3) <- tumors
+rownames(pathMat3) <- cancer.keg
 
 brca3.cont <- brca3[, brca3$sample_type == "Solid Tissue Normal"]
 brca3.cont$cot <- sample(c("A", "B"), ncol(brca3.cont), replace = TRUE)
@@ -227,8 +416,8 @@ dev.off()
 
 
 png("figures/TCGA.kegg_comb.tpr.png")
-data.frame(TPR = c(tpr1, tpr2.1, tpr2.2, tpr3)/length(cancer.kegg), mode = rep(c("base", "dropout 20%", "dropout 50%", "primed"), each = length(tpr1))) %>%
-  mutate(mode = factor(mode, levels = c("base", "dropout 20%", "dropout 50%", "primed") )) %>%
+data.frame(TPR = c(tpr3, tpr2.6, tpr2.7)/length(cancer.kegg), mode = rep(c("primed", "dropout 20%", "dropout 50%"), each = length(tpr3))) %>%
+  mutate(mode = factor(mode, levels = c("primed", "dropout 20%", "dropout 50%") )) %>%
   ggplot(aes(x = mode, y = TPR)) + geom_boxplot() +
   theme_bw()
 dev.off()
@@ -238,11 +427,64 @@ getNfeatures <- function(se){
 }
 
 png("figures/TCGA.kegg_comb.Nfeatures.png")
-data.frame(N = sapply(list(se.kegg1, se.kegg2.1, se.kegg2.2, se.kegg3), getNfeatures), mode = c("base", "dropout 20%", "dropout 50%", "primed")) %>%
-  mutate(mode = factor(mode, levels = c("base", "dropout 20%", "dropout 50%", "primed") )) %>%
+data.frame(N = sapply(list(se.kegg2.6, se.kegg2.7, se.kegg3), getNfeatures), mode = c( "dropout 20%", "dropout 50%", "primed")) %>%
+
+  mutate(mode = factor(mode, levels = c("primed", "dropout 20%", "dropout 50%") )) %>%
   ggplot(aes(x = mode, y = N)) + geom_bar(stat = "identity") +
   theme_bw()
 dev.off()
+
+
+## Correlation with N features
+kegg.map <- read.table("results/preprocess/kegg_gene_map.tsv", header = TRUE)
+kegg.N <- table(kegg.map$PathwayID)
+png("figures/TCGA.kegg_comb.TPRvsNgenes.png", height = 300)
+
+Reduce(rbind, lapply(list(pathMat3, pathMat2.6, pathMat2.7), function(x) {
+  data.frame(N_genes = as.numeric(table(kegg.map$PathwayID)[cancer.kegg]), TP = rowSums(x) )
+}))  %>%
+mutate(model = factor(rep(c("primed", "dropout 20%", "dropout 50%"), each = length(cancer.kegg)),
+ levels = c("primed", "dropout 20%", "dropout 50%") ))   %>%
+ ggplot(aes(x = N_genes, y = TP)) +
+ geom_point() +
+ theme_bw() +
+ geom_smooth(method = "lm") +
+ facet_grid(~model)
+dev.off()
+
+cor.drop <- cor(t(assay(se.kegg2.6)), t(assay(se.kegg2.7)), method  = "spearman")
+cor.drop2 <- cor(t(assay(se.kegg2.8)), t(assay(se.kegg2.7)), method  = "spearman")
+
+cor.rep <- cor(t(assay(se.kegg2.7)), t(assay(se.kegg2.7b)), method  = "spearman")
+
+
+png("figures/TCGA.kegg_comb.cor_dropout.png")
+
+data.frame(R = diag(cor.drop), N_genes = as.numeric(kegg.N[rownames(se.kegg2.6)])) %>%
+filter(N_genes < 600) %>%
+  ggplot(aes(x = N_genes, y = abs(R))) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_bw()
+dev.off()
+
+summary(abs(diag(cor.drop)))
+
+cor.primed <- cor(t(assay(se.kegg3)), t(assay(se.kegg2.7)), method  = "spearman")
+cor.primed2 <- cor(t(assay(se.kegg3)), t(assay(se.kegg2.8)), method  = "spearman")
+
+
+png("figures/TCGA.kegg_comb.cor_primed.png")
+
+data.frame(R = diag(cor.primed), N_genes = as.numeric(kegg.N[rownames(se.kegg2.7)])) %>%
+filter(N_genes < 600) %>%
+  ggplot(aes(x = N_genes, y = abs(R))) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_bw()
+dev.off()
+
+summary(abs(diag(cor.primed)))
 
 ## Load autoencoder hipathia 3
 se.hip3 <- readFeatures("results/TCGA_gexp_norm/hipathia_v3.1/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
@@ -392,3 +634,69 @@ dev.off()
 se.auto <- readFeatures("results/TCGA_gexp_norm/autoencod_v2.1/model_features/dense.tsv", vsd.ori)
 
 cor.auto <- cor(t(assay(se.kegg3)), t(assay(se.auto  )))
+
+
+
+## Initial version: models without primed initialization
+## Load autoencoder kegg 1
+se.kegg1 <- readFeatures("results/TCGA_gexp_norm/kegg_v1.3/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
+rownames(se.kegg1) <- as.character(paths[, 1])
+
+brca1 <- se.kegg1[, se.kegg1$project_id == "TCGA-BRCA" & se.kegg1$sample_type != "Metastatic"]
+
+mod <- model.matrix(~sample_type, colData(brca1))
+paths.lm1 <- lmFit(assay(brca1), mod)
+paths.lm1 <- eBayes(paths.lm1)
+paths.top1 <- topTable(paths.lm1, n = Inf, coef = 2)
+paths.top1[cancer.kegg, ]
+sum(paths.top1[cancer.kegg, ]$adj.P.Val < 0.05)
+
+makeHeatmap(brca1[cancer.kegg, ])
+
+tpr1 <- sapply(tumors, computeTPR, se =  se.kegg1)
+
+
+
+## Load autoencoder kegg 2.1
+se.kegg2.1 <- readFeatures("results/TCGA_gexp_kegg/v2.1/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
+rownames(se.kegg2.1) <- as.character(paths[, 1])
+
+brca2.1 <- se.kegg2.1[, se.kegg2.1$project_id == "TCGA-BRCA" & se.kegg2.1$sample_type != "Metastatic"]
+
+mod <- model.matrix(~sample_type, colData(brca2.1))
+paths.lm2.1 <- lmFit(assay(brca2.1), mod)
+paths.lm2.1 <- eBayes(paths.lm2.1)
+paths.top2.1 <- topTable(paths.lm2.1, n = Inf, coef = 2)
+paths.top2.1[cancer.kegg, ]
+sum(paths.top2.1[cancer.kegg, ]$adj.P.Val < 0.05)
+tpr2.1 <- sapply(tumors, computeTPR, se =  se.kegg2.1)
+
+## Load autoencoder kegg 2.2
+se.kegg2.2 <- readFeatures("results/TCGA_gexp_kegg/v2.2/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
+rownames(se.kegg2.2) <- as.character(paths[, 1])
+
+brca2.2 <- se.kegg2.2[, se.kegg2.2$project_id == "TCGA-BRCA" & se.kegg2.2$sample_type != "Metastatic"]
+
+mod <- model.matrix(~sample_type, colData(brca2.2))
+paths.lm2.2 <- lmFit(assay(brca2.2), mod)
+paths.lm2.2 <- eBayes(paths.lm2.2)
+paths.top2.2 <- topTable(paths.lm2.2, n = Inf, coef = 2)
+paths.top2.2[cancer.kegg, ]
+sum(paths.top2.2[cancer.kegg, ]$adj.P.Val < 0.05)
+tpr2.2 <- sapply(tumors, computeTPR, se =  se.kegg2.2)
+
+
+
+## Load autoencoder kegg 2.4
+se.kegg2.4 <- readFeatures("results/TCGA_gexp_kegg/v2.4/model_features/prune_low_magnitude_dense.tsv", vsd.ori)
+rownames(se.kegg2.4) <- as.character(paths[, 1])
+
+brca2.4 <- se.kegg2.4[, se.kegg2.4$project_id == "TCGA-BRCA" & se.kegg2.4$sample_type != "Metastatic"]
+
+mod <- model.matrix(~sample_type, colData(brca2.4))
+paths.lm2.4 <- lmFit(assay(brca2.4), mod)
+paths.lm2.4 <- eBayes(paths.lm2.4)
+paths.top2.4 <- topTable(paths.lm2.4, n = Inf, coef = 2)
+paths.top2.4[cancer.kegg, ]
+sum(paths.top2.4[cancer.kegg, ]$adj.P.Val < 0.05)
+tpr2.4 <- sapply(tumors, computeTPR, se =  se.kegg2.4)

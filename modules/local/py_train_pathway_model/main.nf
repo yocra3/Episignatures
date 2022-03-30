@@ -8,6 +8,7 @@ process TRAIN_PATHWAY_MODEL {
 
     label 'memory_medium'
     label 'gpu'
+    label 'process_long'
 
     publishDir "${params.outdir}",
         mode: params.publish_dir_mode,

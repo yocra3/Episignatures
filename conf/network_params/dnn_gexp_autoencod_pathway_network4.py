@@ -1,5 +1,5 @@
 ##################################################################################
-# DNN gene expression autoencoder pathways network 3
+# DNN gene expression autoencoder pathways network 4
 ##################################################################################
 ##################################################################################
 
@@ -16,6 +16,7 @@ def model_generator_train(x_train, y_train, gene_mask, params):
     tfmot.sparsity.keras.ConstantSparsity(0.5, 1000000, end_step =  1000000, frequency = 100)))
   if params.dense1_dropout:
         model.add(Dropout(params.dense1_dropout))
+  model.add(Dense(params.dense1_neurons, activation = params.activation))
   model.add(Dense(x_train.shape[1]))
 
   ## Add gene mask

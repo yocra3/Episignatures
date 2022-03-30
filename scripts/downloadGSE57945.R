@@ -60,3 +60,10 @@ saveHDF5SummarizedExperiment(vsd.filt, proj, prefix = "vsd_norm_GOgenes_")
 auto.go.genes <- read.table("results/TCGA_gexp_go/input_genes_autosomics.txt")
 vsd.filt2 <- vsd.filt[as.character(auto.go.genes$V1), ]
 saveHDF5SummarizedExperiment(vsd.filt2, proj, prefix = "vsd_norm_autosom_GOgenes_")
+
+
+## Filter TCGA coding probes
+sel.genes2 <- read.table("results/TCGA_gexp_combat_coding/input_genes.txt")
+
+vsd.filt <- vsd[as.character(sel.genes2$V1), ]
+saveHDF5SummarizedExperiment(vsd.filt, proj, prefix = "vsd_norm_TCGA_codingGenes_")
