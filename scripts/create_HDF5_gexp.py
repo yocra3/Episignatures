@@ -41,23 +41,9 @@ dataset_label.attrs['labels'] = label_encoder.classes_.tolist()
 f.close()
 
 
-## Normalize genes
-means = np.mean(x_train, axis = 0)
-ranges = np.max(x_train, axis = 0) - np.min(x_train, axis = 0)
-x_train_mod = (x_train - means)/ranges
-
-# Save reshaped training data
-f = h5py.File('results/TCGA_gexp/assay_reshaped_norm.h5', 'w')
-dataset_input = f.create_dataset('methy', (x_train_mod.shape[0], x_train_mod.shape[1]))
-dataset_label = f.create_dataset('label', (len(label_int),))
-dataset_input[...] = x_train_mod
-dataset_label[...] = label_int
-dataset_label.attrs['labels'] = label_encoder.classes_.tolist()
-f.close()
-
-pickle.dump( [means, ranges], open( "results/TCGA_gexp/norm_values.pb", "wb" ), protocol = 4 )
-
+## Standardize genes
 stds = np.std(x_train, axis = 0)
+means = np.mean(x_train, axis = 0)
 x_train_std = (x_train - means)/stds
 
 # Save reshaped training data
@@ -71,9 +57,7 @@ f.close()
 
 pickle.dump( [means, stds], open( "results/TCGA_gexp_combat/standardized_values.pb", "wb" ), protocol = 4 )
 
-
-
-# Repeat for proetin coding filtered data
+# Repeat for protein coding filtered data
 # Load and reshape data
 f = h5py.File('results/TCGA_gexp_combat_coding/vsd_normassays.h5', 'r')
 meth_matrix = f['assay001']
@@ -113,17 +97,19 @@ dataset_label[...] = label_int
 dataset_label.attrs['labels'] = label_encoder.classes_.tolist()
 f.close()
 
-# Repeat for GO filtered data
+
+
+# Use PRAD as validation
 # Load and reshape data
-f = h5py.File('results/TCGA_gexp_go/vsd_normassays.h5', 'r')
+f = h5py.File('results/TCGA_gexp_coding_noPRAD/vsd_norm_trainassays.h5', 'r')
 meth_matrix = f['assay001']
 x_train = meth_matrix[...]
 f.close()
 
-with open('results/TCGA_gexp_go/individuals_labels.txt','r') as file:
+with open('results/TCGA_gexp_coding_noPRAD/individuals_labels.txt','r') as file:
     project = file.read()
-project = project.split('\n')[0:-1]
 
+project = project.split('\n')[0:-1]
 
 
 ## Convert labels to integers labels
@@ -133,7 +119,7 @@ label_int = label_encoder.fit_transform(project)
 
 
 # Save reshaped training data
-f = h5py.File('results/TCGA_gexp_go/assay_reshaped.h5', 'w')
+f = h5py.File('results/TCGA_gexp_coding_noPRAD/train_assay_reshaped.h5', 'w')
 dataset_input = f.create_dataset('methy', (x_train.shape[0], x_train.shape[1]))
 dataset_label = f.create_dataset('label', (len(label_int),))
 dataset_input[...] = x_train
@@ -141,31 +127,100 @@ dataset_label[...] = label_int
 dataset_label.attrs['labels'] = label_encoder.classes_.tolist()
 f.close()
 
-
-## Go and autosomic genes and labels with sex
-# Load and reshape data
-f = h5py.File('results/TCGA_gexp_go/vsd_norm_autoassays.h5', 'r')
-meth_matrix = f['assay001']
-x_train = meth_matrix[...]
-f.close()
-
-with open('results/TCGA_gexp_go/individuals_labels_sex.txt','r') as file:
-    project = file.read()
-project = project.split('\n')[0:-1]
-
-
-
-## Convert labels to integers labels
-# integer encode
-label_encoder = LabelEncoder()
-label_int = label_encoder.fit_transform(project)
-
+means = np.mean(x_train, axis = 0)
+stds = np.std(x_train, axis = 0)
+x_train_std = (x_train - means)/stds
 
 # Save reshaped training data
-f = h5py.File('results/TCGA_gexp_go/assay_reshaped_autosomic_sex.h5', 'w')
-dataset_input = f.create_dataset('methy', (x_train.shape[0], x_train.shape[1]))
+f = h5py.File('results/TCGA_gexp_coding_noPRAD/train_assay_reshaped_standardized.h5', 'w')
+dataset_input = f.create_dataset('methy', (x_train_std.shape[0], x_train_std.shape[1]))
 dataset_label = f.create_dataset('label', (len(label_int),))
-dataset_input[...] = x_train
+dataset_input[...] = x_train_std
 dataset_label[...] = label_int
 dataset_label.attrs['labels'] = label_encoder.classes_.tolist()
+f.close()
+
+pickle.dump( [means, stds], open( "results/TCGA_gexp_coding_noPRAD/standardized_values.pb", "wb" ), protocol = 4 )
+
+### Change PRAD
+f = h5py.File('results/TCGA_gexp_coding_noPRAD/vsd_norm_pradassays.h5', 'r')
+meth_matrix = f['assay001']
+x_prad = meth_matrix[...]
+f.close()
+
+means_prad = np.mean(x_prad, axis = 0)
+stds_prad = np.std(x_prad, axis = 0)
+x_prad_std = (x_prad - means_prad)/stds_prad
+
+# Save reshaped training data
+f = h5py.File('results/TCGA_gexp_coding_noPRAD/prad_assay_reshaped_standardized.h5', 'w')
+dataset_input = f.create_dataset('methy', (x_prad_std.shape[0], x_prad_std.shape[1]))
+dataset_input[...] = x_prad_std
+f.close()
+
+
+### Tumor
+f = h5py.File('results/TCGA_gexp_coding_noPRAD/vsd_norm_prad_tumorassays.h5', 'r')
+meth_matrix = f['assay001']
+x_prad_tum = meth_matrix[...]
+f.close()
+
+means_prad_tum = np.mean(x_prad_tum, axis = 0)
+stds_prad_tum = np.std(x_prad_tum, axis = 0)
+x_prad_tum_std = (x_prad_tum - means_prad_tum)/stds_prad_tum
+
+# Save reshaped training data
+f = h5py.File('results/TCGA_gexp_coding_noPRAD/prad_tumor_assay_reshaped_standardized.h5', 'w')
+dataset_input = f.create_dataset('methy', (x_prad_tum_std.shape[0], x_prad_tum_std.shape[1]))
+dataset_input[...] = x_prad_tum_std
+f.close()
+
+### Change GSE169038
+f = h5py.File('results/GSE169038/network_genesassays.h5', 'r')
+meth_matrix = f['assay001']
+x_array = meth_matrix[...]
+f.close()
+
+means_array = np.mean(x_array, axis = 0)
+stds_array = np.std(x_array, axis = 0)
+x_prad_array = (x_array - means_array)/stds_array
+x_prad_array[:, stds_array == 0] = 0
+
+# Save reshaped training data
+f = h5py.File('results/GSE169038/prad_array_reshaped_standardized.h5', 'w')
+dataset_input = f.create_dataset('methy', (x_prad_array.shape[0], x_prad_array.shape[1]))
+dataset_input[...] = x_prad_array
+f.close()
+
+### Adapt prostate
+f = h5py.File('results/GTEx/vst_prostate_assays.h5', 'r')
+meth_matrix = f['assay001']
+prostate = meth_matrix[...]
+f.close()
+
+means_prost = np.mean(prostate, axis = 0)
+stds_prost = np.std(prostate, axis = 0)
+x_prost = (prostate - means_prost)/stds_prost
+
+# Save reshaped training data
+f = h5py.File('results/GTEx/prostate_reshaped_standardized.h5', 'w')
+dataset_input = f.create_dataset('methy', (x_prost.shape[0], x_prost.shape[1]))
+dataset_input[...] = x_prost
+f.close()
+
+
+### Adapt testis
+f = h5py.File('results/GTEx/vst_testis_assays.h5', 'r')
+meth_matrix = f['assay001']
+testis = meth_matrix[...]
+f.close()
+
+means_testis = np.mean(testis, axis = 0)
+stds_testis = np.std(testis, axis = 0)
+x_testis = (testis - means_testis)/stds_testis
+
+# Save reshaped training data
+f = h5py.File('results/GTEx/testis_reshaped_standardized.h5', 'w')
+dataset_input = f.create_dataset('methy', (x_testis.shape[0], x_testis.shape[1]))
+dataset_input[...] = x_testis
 f.close()

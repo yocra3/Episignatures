@@ -128,66 +128,70 @@ read_training <- function(path, name){
 }
 
 ## Compare trainings
-## No primed values
-# raw.vals <- read_training("results/TCGA_gexp_norm/kegg_v1.3/model_trained/TCGA_gexp_norm_training_evaluation.txt", "kegg - base")
-# drop20.vals <- read_training("results/TCGA_gexp_norm/kegg_v2.1/model_trained/TCGA_gexp_norm_training_evaluation.txt", "kegg - dropout 20%")
-# drop50.vals <- read_training("results/TCGA_gexp_norm/kegg_v2.2/model_trained/TCGA_gexp_norm_training_evaluation.txt", "kegg - dropout 50%")
-# all.vals <- Reduce(rbind, list(auto.vals, raw.vals, drop20.vals, drop50.vals, primed.vals,hipathia.vals))
+all.paths <- read_training("results/TCGA_gexp_coding_noPRAD/comb_paths_v3.6/model_trained/TCGA_gexp_coding_noPRAD_training_evaluation.txt", "Pathway (All Paths)")
+base <- read_training("results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_trained/TCGA_gexp_coding_noPRAD_training_evaluation.txt", "Pathway")
+drop <- read_training("results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.7/model_trained/TCGA_gexp_coding_noPRAD_training_evaluation.txt", "Dropout (no pretraining)")
+full <- read_training("results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.9/model_trained/TCGA_gexp_coding_noPRAD_training_evaluation.txt", "Dropout (pretraining)")
 
-auto.base <- read_training("results/TCGA_gexp_combat_coding_std/autoencod_v2.2/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Pathway")
-auto.post <- read_training("results/TCGA_gexp_combat_coding_std/autoencod_v3.2/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Pathway + Dense")
-auto.pre <- read_training("results/TCGA_gexp_combat_coding_std/autoencod_v3.1/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Dense + Pathway")
-auto.pre_post <- read_training("results/TCGA_gexp_combat_coding_std/autoencod_v4.1/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Dense + Pathway + Dense")
-
-base <- read_training("results/TCGA_gexp_combat_coding_std/kegg_filt2_v3.6/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Pathway")
-post <- read_training("results/TCGA_gexp_combat_coding_std/kegg_filt2_v4.3/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Pathway + Dense")
-pre <- read_training("results/TCGA_gexp_combat_coding_std/kegg_filt2_v6.2/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Dense + Pathway")
-pre_post <- read_training("results/TCGA_gexp_combat_coding_std/kegg_filt2_v5.3/model_trained/TCGA_gexp_combat_coding_std_training_evaluation.txt", "Dense + Pathway + Dense")
-
-all.vals <- rbind(Reduce(rbind, list(base, post, pre, pre_post)) %>%
-  mutate(model = factor(model, levels = c("Pathway", "Pathway + Dense", "Dense + Pathway", "Dense + Pathway + Dense" ))) %>%
-  mutate(type = "KEGG pathways"),
-  Reduce(rbind, list(auto.base, auto.post, auto.pre, auto.pre_post)) %>%
-    mutate(model = factor(model, levels = c("Pathway", "Pathway + Dense", "Dense + Pathway", "Dense + Pathway + Dense" ))) %>%
-    mutate(type = "Autoencoder"))
+pre <- read_training("results/TCGA_gexp_coding_noPRAD/comb_paths3_v6.2/model_trained/TCGA_gexp_coding_noPRAD_training_evaluation.txt", "Dense + Pathway")
+post <- read_training("results/TCGA_gexp_coding_noPRAD/comb_paths3_v4.3/model_trained/TCGA_gexp_coding_noPRAD_training_evaluation.txt", "Pathway + Dense")
+pre_post <- read_training("results/TCGA_gexp_coding_noPRAD/comb_paths3_v5.3/model_trained/TCGA_gexp_coding_noPRAD_training_evaluation.txt", "Dense + Pathway + Dense")
+auto <- read_training("results/TCGA_gexp_coding_noPRAD/autoencod_v2.3/model_trained/TCGA_gexp_coding_noPRAD_training_evaluation.txt", "Autoencoder")
 
 
+df.models <- Reduce(rbind, list(all.paths, base, post, pre, pre_post)) %>%
+  mutate(model = factor(model, levels = c("Pathway", "Pathway (All Paths)", "Pathway + Dense", "Dense + Pathway", "Dense + Pathway + Dense" )),
+          dataset = ifelse(measure == "loss", "Training", "Validation"))
 
-png("figures/TCGA.kegg.training.png", width = 900)
-ggplot(all.vals, aes(x = epoch, y = mse, color = measure, group = measure)) +
+
+#
+png("figures/TCGA.pathways.trainingeval_models.png", width = 900)
+df.models %>%
+filter(epoch > 1) %>%
+  ggplot(aes(x = epoch, y = mse, color = dataset, group = dataset)) +
   geom_point() +
   geom_line() +
-  facet_grid(type ~ model) +
-  theme_bw()
+  facet_grid(~ model) +
+  theme_bw() +
+  scale_color_discrete(name = "") +
+  scale_y_continuous(name = "MSE")
 dev.off()
 
+df.train <- Reduce(rbind, list(base, drop, full, auto)) %>%
+  mutate(model = factor(model, levels = c("Pathway", "Autoencoder", "Dropout (no pretraining)", "Dropout (pretraining)")),
+          dataset = ifelse(measure == "loss", "Training", "Validation"))
 
-png("figures/TCGA.kegg.trainingb.png", width = 600)
-ggplot(all.vals, aes(x = epoch, y = mse, color = measure, group = measure)) +
+
+png("figures/TCGA.pathways.trainingeval_training.png", width = 700)
+df.train  %>%
+filter(epoch > 1) %>%
+ggplot(aes(x = epoch, y = mse, color = dataset, group = dataset)) +
   geom_point() +
   geom_line() +
-  facet_grid(model ~ type) +
-  theme_bw()
+  facet_grid( ~ model) +
+  theme_bw() +
+  scale_color_discrete(name = "") +
+  scale_y_continuous(name = "MSE")
 dev.off()
 
-
-png("figures/TCGA.kegg.training.epoch10.png", width = 900)
-filter(all.vals, epoch > 10) %>%
-ggplot(aes(x = epoch, y = mse, color = measure, group = measure)) +
-  geom_point() +
-  geom_line() +
-  facet_grid(type ~ model) +
-  theme_bw()
-dev.off()
-
-png("figures/TCGA.kegg.training.epoch10b.png", width = 600)
-filter(all.vals, epoch > 10) %>%
-ggplot(aes(x = epoch, y = mse, color = measure, group = measure)) +
-  geom_point() +
-  geom_line() +
-  facet_grid(model ~ type) +
-  theme_bw()
-dev.off()
+#
+# png("figures/TCGA.kegg.training.epoch10.png", width = 900)
+# filter(all.vals, epoch > 10) %>%
+# ggplot(aes(x = epoch, y = mse, color = measure, group = measure)) +
+#   geom_point() +
+#   geom_line() +
+#   facet_grid(type ~ model) +
+#   theme_bw()
+# dev.off()
+#
+# png("figures/TCGA.kegg.training.epoch10b.png", width = 600)
+# filter(all.vals, epoch > 10) %>%
+# ggplot(aes(x = epoch, y = mse, color = measure, group = measure)) +
+#   geom_point() +
+#   geom_line() +
+#   facet_grid(model ~ type) +
+#   theme_bw()
+# dev.off()
 
 ## Hipathia structure
 # hipathia.vals <- read_training("results/TCGA_gexp_norm/hipathia_v3.1/model_trained/TCGA_gexp_norm_training_evaluation.txt", "hipathia - primed")
@@ -208,6 +212,623 @@ kegg.df <- lapply(kegg.annot$children, function(x) {
 kegg.df <- kegg.df %>%
   mutate(pathID = paste0("path:hsa", substring(path, 0, 5)),
           pathName = gsub("^[0-9]*  ", "", path))
+
+
+#
+
+## Compute mse
+ori.train <- h5read("results/TCGA_gexp_coding_noPRAD/train_assay_reshaped_standardized.h5","methy")
+ori.prad <- h5read("results/TCGA_gexp_coding_noPRAD/prad_assay_reshaped_standardized.h5","methy")
+
+
+base <- h5read("results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_features/autoencoder_output.h5", "auto")
+prad <- h5read("results/TCGA_gexp_coding_PRAD/comb_paths3_v3.6/model_features/autoencoder_output.h5", "auto")
+
+train_ind <- read.table("results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_trained/test_indices.csv")$V1 + 1
+
+# mat_list <- list(base, post, pre, pre_post)
+# names(mat_list) <- c("Pathway", "Pathway + Dense", "Dense + Pathway", "Dense + Pathway + Dense")
+vst <- loadHDF5SummarizedExperiment("results/TCGA_gexp_coding_noPRAD/", prefix = "vsd_norm_train")
+vst_prad <- loadHDF5SummarizedExperiment("results/TCGA_gexp_coding_noPRAD/", prefix = "vsd_norm_prad")
+
+labels <- as.character(read.table("./results/TCGA_gexp_coding_noPRAD/individuals_labels.txt")$V1)
+labels.prad <- as.character(read.table("./results/TCGA_gexp_combat_coding/individuals_labels.txt")$V1)
+
+genes <- read.table("./results/TCGA_gexp_combat_coding/input_genes.txt")
+rownames(ori.train) <- rownames(ori.prad) <- rownames(base) <- rownames(prad) <- as.character(genes$V1)
+
+phenos <- TCGAbiolinks:::get_IDs(vst)
+phenos.prad <- TCGAbiolinks:::get_IDs(vst_prad)
+
+ori.val <- ori.train[, train_ind]
+base.val <- base[, train_ind]
+
+
+paths <- read.table("results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_trained/pathways_names.txt", header = TRUE)
+paths.vec <- as.character(paths[, 1])
+
+kegg.map <- read.table("results/preprocess/go_kegg_final_gene_map.tsv", header = TRUE)
+kegg.N <- table(kegg.map$PathwayID)
+
+
+kegg.df.com <- subset(kegg.df, pathID %in% paths.vec)
+kegg.genes.N <- kegg.map %>%
+  group_by(Symbol) %>%
+  summarize(N = n())
+
+
+## MSE
+mean.mse.ori <- mean((ori.val - base.val)**2)
+
+
+# median.mses <- sapply(mat_list, function(x) median((x - ori)**2))
+genes.mse <- rowMeans((ori.val - base.val)**2)
+genes.cors <- sapply(seq_len(nrow(ori.val)), function(i) cor(ori.val[i, ], base.val[i, ], method = "spearman"))
+names(genes.cors) <- rownames(ori.val)
+
+genes.cors2 <- sapply(seq_len(nrow(ori.val)), function(i) cor(ori.val[i, ], base.val[i, ], method = "pearson"))
+
+mean.mse.prad <- mean((ori.prad - prad)**2)
+genes.mse.prad <- rowMeans((ori.prad - prad)**2)
+genes.cors.prad <- sapply(seq_len(nrow(ori.prad)), function(i) cor(ori.prad[i, ], prad[i, ], method = "spearman"))
+names(genes.cors.prad) <- rownames(ori.prad)
+
+genes.cors.prad2 <- sapply(seq_len(nrow(ori.prad)), function(i) cor(ori.prad[i, ], prad[i, ], method = "pearson"))
+
+## R2
+r2.ori <- 1 - sum((ori.val - base.val)**2)/sum(( ori.val - rowMeans(ori.val))**2)
+r2.prad <- 1 - sum((ori.prad - prad)**2)/sum((ori.prad - rowMeans(ori.prad))**2)
+
+genes.r2 <- 1 - rowSums((ori.val - base.val)**2)/rowSums(( ori.val - rowMeans(ori.val))**2)
+genes.r2.prad <- 1 - rowSums((ori.prad - prad)**2)/rowSums((ori.prad - rowMeans(ori.prad))**2)
+
+
+df.cors_mse <- tibble(MSE = c(genes.mse, genes.mse.prad), correlation = c(genes.cors, genes.cors.prad),
+  r2 = c(genes.r2, genes.r2.prad), r2_lineal = c(genes.cors2, genes.cors.prad2)**2,
+  Symbol = c(names(genes.cors), names(genes.cors.prad)),
+  Dataset = rep(c("Validation", "PRAD"), c(length(genes.cors), length(genes.cors.prad))))   %>%
+  left_join(kegg.genes.N, by = "Symbol") %>%
+  mutate(N = ifelse(is.na(N), 0, N),
+          path = ifelse(N == 0, "out", "in"),
+          Dataset = factor(Dataset, levels = c("Validation", "PRAD")))
+
+
+
+png("figures/mse_cor_Npathway.png")
+df.cors_mse  %>%
+  mutate(MSE = ifelse(MSE > 2.4, 2.4, MSE),
+        class = ifelse(N > 5, "6+", ifelse(N > 2, "3-5", N)),
+         Class = factor(class, levels = c("0", "1", "2", "3-5", "6+"))) %>%
+  gather(Measure, Value, 1:2) %>%
+  ggplot(aes(x = Class, y = Value)) +
+  geom_boxplot() +
+  xlab("N pathways per gene") +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scales  = "free_y")
+dev.off()
+
+png("figures/r2_Npathway.png")
+df.cors_mse  %>%
+  mutate(r2 = ifelse(r2 < -1, -1, r2),
+        class = ifelse(N > 5, "6+", ifelse(N > 2, "3-5", N)),
+         Class = factor(class, levels = c("0", "1", "2", "3-5", "6+"))) %>%
+  gather(Measure, Value, 3:4) %>%
+  ggplot(aes(x = Class, y = Value)) +
+  geom_boxplot() +
+  xlab("N pathways per gene") +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scales  = "free_y")
+dev.off()
+
+df.cors_mse %>% group_by(Dataset, path) %>%
+  summarize(m30 = mean(correlation > 0.3, na.rm = T), m50 = mean(correlation > 0.5, na.rm = T),
+  m70 = mean(correlation > 0.7, na.rm = T), m90 = mean(correlation > 0.9, na.rm = T))
+
+#
+df.cors_mse %>% group_by(Dataset, path) %>%
+  summarize(r0 = mean(r2 > 0, na.rm = T), r25 = mean(r2 > 0.25, na.rm = T),
+  r50 = mean(r2 > 0.5, na.rm = T), r75 = mean(r2 > 0.75, na.rm = T))
+
+#
+df.cors_mse %>% group_by(Dataset, path) %>%
+  summarize(r0 = mean(r2_lineal > 0, na.rm = T), r25 = mean(r2_lineal > 0.25, na.rm = T),
+  r50 = mean(r2_lineal > 0.5, na.rm = T), r75 = mean(r2_lineal > 0.75, na.rm = T))
+
+summary(lm(MSE ~path, df.cors_mse, subset = Dataset != "PRAD"))
+summary(lm(MSE ~path, df.cors_mse, subset = Dataset == "PRAD"))
+
+# png("figures/mse_category.png", width = 1000)
+# df.cors_mse  %>%
+#   filter(N > 0) %>%
+#   select(-N, -path) %>%
+#   gather(Category, N, 5:10) %>%
+#   filter(N > 0) %>%
+#   gather(measure, Value, 3:4) %>%
+#   ggplot(aes(x = Category, y = Value)) +
+#   geom_boxplot() +
+#   facet_grid(Model ~ measure) +
+#   theme_bw()
+# dev.off()
+
+# png("figures/mse_gene_type.png", width = 1000)
+# mse.df %>%
+#   mutate(type = ifelse(gene_type %in% c("protein_coding", "processed_pseudogene", "lncRNA", "unprocessed_pseudogene"), gene_type, "Others"),
+#           network = ifelse(N > 0, "Network", "Excluded")) %>%
+#   gather(measure, val, 2:3) %>%
+#   ggplot(aes(x = type, y = val, col = network)) +
+#   geom_boxplot() +
+#   geom_hline(yintercept = mean.mse, linetype  = 'dashed') +
+#   geom_hline(yintercept = median(genes.mse), linetype  = 'dashed', color = 'blue') +
+#   theme_bw() +
+#   facet_grid(set ~ measure)
+# dev.off()
+
+
+
+inds.mse.ori <- colMeans((base.val - ori.val)**2)
+inds.mse.prad <- colMeans((ori.prad - prad)**2)
+
+inds.r2 <- 1 - colSums((ori.val - base.val)**2)/colSums(( ori.val- colMeans(ori.val))**2)
+inds.r2.prad <- 1 - colSums((ori.prad - prad)**2)/colSums((ori.prad - colMeans(ori.prad))**2)
+
+inds.cors2 <- sapply(seq_len(ncol(ori.val)), function(i) cor(ori.val[, i], base.val[, i], method = "pearson"))
+inds.cors.prad2 <- sapply(seq_len(ncol(ori.prad)), function(i) cor(ori.prad[, i], prad[, i], method = "pearson"))
+
+df.inds_mse <- tibble(mse = c(inds.mse.ori, inds.mse.prad),
+                r2 = c(inds.r2, inds.r2.prad), r2_lin = c(inds.cors2, inds.cors.prad2)**2,
+                  Dataset = rep(c("Validation", "PRAD"), c(length(train_ind), ncol(vst_prad))),
+                      barcode = c(colnames(vst)[train_ind], colnames(vst_prad)),
+                      tumor = c(labels[train_ind], rep("TCGA-PRAD", ncol(vst_prad)))) %>%
+  mutate(Dataset = factor(Dataset, levels = c("Validation", "PRAD"))) %>%
+  left_join(rbind(phenos, phenos.prad), by = "barcode") %>%
+  mutate(Condition = ifelse(condition == "normal", "Normal", "Cancer"))
+
+
+png("figures/mse_individuals_validation.png", width = 3000)
+df.inds_mse %>%
+  ggplot(aes(x = tumor, y = mse)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(~ Dataset, scale = "free_x", space = "free_x")
+dev.off()
+
+
+
+png("figures/mse_individuals_windsor_validation.png", width = 3000)
+df.inds_mse %>%
+  mutate(MSE = ifelse(mse > 2, 2, MSE)) %>%
+  ggplot(aes(x = tumor, y = mse)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(~ Dataset, scale = "free_x", space = "free_x")
+dev.off()
+
+
+
+png("figures/mse_individuals_condition_validation.png", height = 400)
+df.inds_mse %>%
+  mutate(MSE = ifelse(mse > 2, 2, mse)) %>%
+  ggplot(aes(x = Condition, y = MSE)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(~ Dataset, scale = "free_x", space = "free_x")
+dev.off()
+
+
+
+png("figures/mse_individuals_seqcenter_validation.png")
+df.inds_mse %>%
+  mutate(MSE = ifelse(mse > 2, 2, mse)) %>%
+  ggplot(aes(x = center, y = MSE)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(~ Dataset, scale = "free_x", space = "free_x")
+dev.off()
+
+
+png("figures/r2_individuals_validation.png", width = 3000)
+df.inds_mse %>%
+  gather(Measure, Value, 2:3) %>%
+  ggplot(aes(x = tumor, y = Value)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scale = "free", space = "free_x")
+dev.off()
+
+
+
+
+
+png("figures/r2_individuals_condition_validation.png", height = 400)
+df.inds_mse %>%
+  gather(Measure, Value, 2:3) %>%
+  ggplot(aes(x = Condition, y = Value)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scale = "free", space = "free_x")
+dev.off()
+
+
+
+png("figures/r2_individuals_seqcenter_validation.png")
+df.inds_mse %>%
+  gather(Measure, Value, 2:3) %>%
+  ggplot(aes(x = center, y = Value)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scale = "free", space = "free_x")
+dev.off()
+
+inds.mse.path.ori <- colMeans((base.val -  ori.val)[rownames(base.val) %in% kegg.map$Symbol,]**2)
+inds.mse.path.prad <- colMeans((ori.prad - prad)[rownames(prad) %in% kegg.map$Symbol,]**2)
+
+inds.path.r2 <- 1 - colSums((ori.val - base.val)[rownames(base.val) %in% kegg.map$Symbol,]**2)/colSums(( ori.val- colMeans(ori.val))[rownames(ori.val) %in% kegg.map$Symbol,]**2)
+inds.r2.path.prad <- 1 - colSums((ori.prad - prad)[rownames(prad) %in% kegg.map$Symbol,]**2)/colSums((ori.prad - colMeans(ori.prad))[rownames(ori.prad) %in% kegg.map$Symbol,]**2)
+
+inds.path.cors2 <- sapply(seq_len(ncol(ori.val)), function(i) cor(ori.val[rownames(ori.val) %in% kegg.map$Symbol, i], base.val[rownames(base.val) %in% kegg.map$Symbol, i], method = "pearson"))
+inds.cors.path.prad2 <- sapply(seq_len(ncol(ori.prad)), function(i) cor(ori.prad[rownames(ori.prad) %in% kegg.map$Symbol, i], prad[rownames(prad) %in% kegg.map$Symbol, i], method = "pearson"))
+
+
+df.inds_mse_path <- tibble(mse = c(inds.mse.path.ori, inds.mse.path.prad),
+                          r2 = c(inds.path.r2, inds.r2.path.prad),
+                          r2_lin = c(inds.path.cors2 , inds.cors.path.prad2)**2,
+                    Dataset = rep(c("Validation", "PRAD"), c(length(train_ind), ncol(vst_prad))),
+                      barcode = c(colnames(vst)[train_ind], colnames(vst_prad)),
+                      tumor = c(labels[train_ind], rep("TCGA-PRAD", ncol(vst_prad)))) %>%
+  mutate(Dataset = factor(Dataset, levels = c("Validation", "PRAD"))) %>%
+  left_join(rbind(phenos, phenos.prad), by = "barcode") %>%
+  mutate(Condition = ifelse(condition == "normal", "Normal", "Cancer"))
+
+
+
+png("figures/mse_individuals_path_genes_validation.png", width = 3000)
+df.inds_mse_path %>%
+  ggplot(aes(x = tumor, y = mse)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(~ Dataset, scale = "free_x", space = "free_x")
+dev.off()
+
+png("figures/mse_individuals_path_condition_validation.png", height = 400)
+df.inds_mse_path %>%
+  mutate(MSE = ifelse(mse > 2, 2, mse)) %>%
+  ggplot(aes(x = Condition, y = MSE)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(~ Dataset, scale = "free_x", space = "free_x")
+dev.off()
+
+
+
+png("figures/mse_individuals_path_seqcenter_validation.png")
+df.inds_mse_path %>%
+  mutate(MSE = ifelse(mse > 2, 2, mse)) %>%
+  ggplot(aes(x = center, y = MSE)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(~ Dataset, scale = "free_x", space = "free_x")
+dev.off()
+
+
+
+
+
+png("figures/r2_individuals_path_genes_validation.png", width = 3000)
+df.inds_mse_path %>%
+  gather(Measure, Value, 2:3) %>%
+  ggplot(aes(x = tumor, y = Value)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scale = "free", space = "free_x")
+dev.off()
+
+png("figures/r2_individuals_path_condition_validation.png", height = 400)
+df.inds_mse_path %>%
+  gather(Measure, Value, 2:3) %>%
+  ggplot(aes(x = Condition, y = Value)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scale = "free", space = "free_x")
+dev.off()
+
+
+
+png("figures/r2_individuals_path_seqcenter_validation.png")
+df.inds_mse_path %>%
+  gather(Measure, Value, 2:3) %>%
+  ggplot(aes(x = center, y = Value)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scale = "free", space = "free_x")
+dev.off()
+
+
+## Correlation between PCs
+pc.prad <- prcomp(t(prad) )
+pc.prad.ori <- prcomp(t(ori.prad))
+
+prad.f <- read.table("results/TCGA_gexp_coding_PRAD/comb_paths3_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+pc.prad.feat <-  prcomp(prad.f)
+
+png("figures/PRAD_PCS_comparative.png", width = 1200)
+par(mfrow = c(1, 3))
+plot(pc.prad.ori$x, col = factor(vst_prad$sample_type), main = "Original data")
+plot(pc.prad.feat$x, col = factor(vst_prad$sample_type), main = "Features")
+plot(pc.prad$x, col = factor(vst_prad$sample_type), main = "Network Output")
+dev.off()
+
+vars <- cumsum(pc.prad.ori$sdev**2)/sum(pc.prad.ori$sdev**2)
+
+cors <- diag(cor(pc.prad.ori$x, pc.prad.feat$x))
+
+png("figures/PRAD_cor_pcs_ori_model.png")
+tibble(Correlation = abs(cors), PC = seq_len(length(cors)), Variance = vars) %>%
+  filter(PC < 100) %>%
+  gather(Measure, Value, c(1, 3)) %>%
+  ggplot(aes(x = PC, y = Value, group = Measure, color = Measure)) +
+  geom_line() +
+  theme_bw()
+dev.off()
+
+pc.ori <- prcomp(t(ori.val), rank. = 10 )
+pc.pred <- prcomp(t(base.val), rank. = 10)
+
+
+### Compare with autoencoder
+
+## Compute mse
+auto <- h5read("results/TCGA_gexp_coding_noPRAD/autoencod_v2.3/model_features/autoencoder_output.h5", "auto")
+auto.prad <- h5read("results/TCGA_gexp_coding_PRAD/autoencod_v2.3/model_features/autoencoder_output.h5", "auto")
+
+auto.val <- auto[, train_ind]
+
+## MSE
+mean.mse.auto <- mean((ori.val - auto.val)**2)
+genes.mse.auto <- rowMeans((ori.val - auto.val)**2)
+genes.cors.auto <- sapply(seq_len(nrow(ori.val)), function(i) cor(ori.val[i, ], auto.val[i, ], method = "spearman"))
+names(genes.cors.auto) <- rownames(ori.val)
+
+genes.cors.auto2 <- sapply(seq_len(nrow(ori.val)), function(i) cor(ori.val[i, ], auto.val[i, ], method = "pearson"))
+
+mean.mse.prad.auto <- mean((ori.prad - auto.prad)**2)
+genes.mse.prad.auto <- rowMeans((ori.prad - auto.prad)**2)
+genes.cors.prad.auto <- sapply(seq_len(nrow(ori.prad)), function(i) cor(ori.prad[i, ], auto.prad[i, ], method = "spearman"))
+names(genes.cors.prad.auto) <- rownames(ori.prad)
+
+genes.cors.prad2.auto <- sapply(seq_len(nrow(ori.prad)), function(i) cor(ori.prad[i, ], auto.prad[i, ], method = "pearson"))
+
+## R2
+r2.ori.auto <- 1 - sum((ori.val - auto.val)**2)/sum(( ori.val - rowMeans(ori.val))**2)
+r2.prad.auto <- 1 - sum((ori.prad - auto.prad)**2)/sum((ori.prad - rowMeans(ori.prad))**2)
+
+genes.r2.auto <- 1 - rowSums((ori.val - auto.val)**2)/rowSums(( ori.val - rowMeans(ori.val))**2)
+genes.r2.prad.auto <- 1 - rowSums((ori.prad - auto.prad)**2)/rowSums((ori.prad - rowMeans(ori.prad))**2)
+
+
+df.cors_mse.auto <- tibble(MSE = c(genes.mse.auto, genes.mse.prad.auto), correlation = c(genes.cors.auto, genes.cors.prad.auto),
+  r2 = c(genes.r2.auto, genes.r2.prad.auto), r2_lineal = c(genes.cors.auto2, genes.cors.prad2.auto)**2,
+  Symbol = c(names(genes.cors.auto), names(genes.cors.prad.auto)),
+  Dataset = rep(c("Validation", "PRAD"), c(length(genes.cors.auto), length(genes.cors.prad.auto))))   %>%
+  left_join(kegg.genes.N, by = "Symbol") %>%
+  mutate(N = ifelse(is.na(N), 0, N),
+          path = ifelse(N == 0, "out", "in"),
+          Dataset = factor(Dataset, levels = c("Validation", "PRAD")))
+
+
+
+png("figures/autoencod_mse_cor_Npathway.png")
+df.cors_mse.auto  %>%
+  mutate(MSE = ifelse(MSE > 2.4, 2.4, MSE),
+        class = ifelse(N > 5, "6+", ifelse(N > 2, "3-5", N)),
+         Class = factor(class, levels = c("0", "1", "2", "3-5", "6+"))) %>%
+  gather(Measure, Value, 1:2) %>%
+  ggplot(aes(x = Class, y = Value)) +
+  geom_boxplot() +
+  xlab("N pathways per gene") +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scales  = "free_y")
+dev.off()
+
+png("figures/autoencod_r2_Npathway.png")
+df.cors_mse.auto  %>%
+  mutate(r2 = ifelse(r2 < -1, -1, r2),
+        class = ifelse(N > 5, "6+", ifelse(N > 2, "3-5", N)),
+         Class = factor(class, levels = c("0", "1", "2", "3-5", "6+"))) %>%
+  gather(Measure, Value, 3:4) %>%
+  ggplot(aes(x = Class, y = Value)) +
+  geom_boxplot() +
+  xlab("N pathways per gene") +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scales  = "free_y")
+dev.off()
+
+df.cors_mse.auto %>% group_by(Dataset, path) %>%
+  summarize(m30 = mean(correlation > 0.3, na.rm = T), m50 = mean(correlation > 0.5, na.rm = T),
+  m70 = mean(correlation > 0.7, na.rm = T), m90 = mean(correlation > 0.9, na.rm = T))
+
+#
+df.cors_mse.auto %>% group_by(Dataset, path) %>%
+  summarize(r0 = mean(r2 > 0, na.rm = T), r25 = mean(r2 > 0.25, na.rm = T),
+  r50 = mean(r2 > 0.5, na.rm = T), r75 = mean(r2 > 0.75, na.rm = T))
+
+#
+df.cors_mse.auto %>% group_by(Dataset, path) %>%
+  summarize(r0 = mean(r2_lineal > 0, na.rm = T), r25 = mean(r2_lineal > 0.25, na.rm = T),
+  r50 = mean(r2_lineal > 0.5, na.rm = T), r75 = mean(r2_lineal > 0.75, na.rm = T))
+
+inds.mse.ori.auto <- colMeans((base.val - auto.val)**2)
+inds.mse.prad.auto <- colMeans((ori.prad - auto.prad)**2)
+
+inds.r2.auto <- 1 - colSums((ori.val - auto.val)**2)/colSums(( ori.val- colMeans(ori.val))**2)
+inds.r2.prad.auto <- 1 - colSums((ori.prad - auto.prad)**2)/colSums((ori.prad - colMeans(ori.prad))**2)
+
+inds.cors2.auto <- sapply(seq_len(ncol(ori.val)), function(i) cor(ori.val[, i], auto.val[, i], method = "pearson"))
+inds.cors.prad2.auto <- sapply(seq_len(ncol(ori.prad)), function(i) cor(ori.prad[, i], auto.prad[, i], method = "pearson"))
+
+df.inds_mse.auto <- tibble(mse = c(inds.mse.ori.auto, inds.mse.prad.auto),
+                r2 = c(inds.r2.auto, inds.r2.prad.auto), r2_lin = c(inds.cors2.auto, inds.cors.prad2.auto)**2,
+                  Dataset = rep(c("Validation", "PRAD"), c(length(train_ind), ncol(vst_prad))),
+                      barcode = c(colnames(vst)[train_ind], colnames(vst_prad)),
+                      tumor = c(labels[train_ind], rep("TCGA-PRAD", ncol(vst_prad)))) %>%
+  mutate(Dataset = factor(Dataset, levels = c("Validation", "PRAD"))) %>%
+  left_join(rbind(phenos, phenos.prad), by = "barcode") %>%
+  mutate(Condition = ifelse(condition == "normal", "Normal", "Cancer"))
+
+
+png("figures/autoencod_mse_individuals_condition_validation.png", height = 400)
+df.inds_mse.auto %>%
+  mutate(MSE = ifelse(mse > 2, 2, mse)) %>%
+  ggplot(aes(x = Condition, y = MSE)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(~ Dataset, scale = "free_x", space = "free_x")
+dev.off()
+
+
+
+png("figures/autoencod_mse_individuals_seqcenter_validation.png")
+df.inds_mse.auto %>%
+  mutate(MSE = ifelse(mse > 2, 2, mse)) %>%
+  ggplot(aes(x = center, y = MSE)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(~ Dataset, scale = "free_x", space = "free_x")
+dev.off()
+
+
+
+png("figures/autoencod_r2_individuals_condition_validation.png", height = 400)
+df.inds_mse.auto %>%
+  gather(Measure, Value, 2:3) %>%
+  ggplot(aes(x = Condition, y = Value)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scale = "free", space = "free_x")
+dev.off()
+
+
+
+png("figures/autoencod_r2_individuals_seqcenter_validation.png")
+df.inds_mse.auto %>%
+  gather(Measure, Value, 2:3) %>%
+  ggplot(aes(x = center, y = Value)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scale = "free", space = "free_x")
+dev.off()
+
+inds.mse.path.ori <- colMeans((base.val -  ori.val)[rownames(base.val) %in% kegg.map$Symbol,]**2)
+inds.mse.path.prad <- colMeans((ori.prad - prad)[rownames(prad) %in% kegg.map$Symbol,]**2)
+
+inds.path.r2 <- 1 - colSums((ori.val - base.val)[rownames(base.val) %in% kegg.map$Symbol,]**2)/colSums(( ori.val- colMeans(ori.val))[rownames(ori.val) %in% kegg.map$Symbol,]**2)
+inds.r2.path.prad <- 1 - colSums((ori.prad - prad)[rownames(prad) %in% kegg.map$Symbol,]**2)/colSums((ori.prad - colMeans(ori.prad))[rownames(ori.prad) %in% kegg.map$Symbol,]**2)
+
+inds.path.cors2 <- sapply(seq_len(ncol(ori.val)), function(i) cor(ori.val[rownames(ori.val) %in% kegg.map$Symbol, i], base.val[rownames(base.val) %in% kegg.map$Symbol, i], method = "pearson"))
+inds.cors.path.prad2 <- sapply(seq_len(ncol(ori.prad)), function(i) cor(ori.prad[rownames(ori.prad) %in% kegg.map$Symbol, i], prad[rownames(prad) %in% kegg.map$Symbol, i], method = "pearson"))
+
+
+df.inds_mse_path <- tibble(mse = c(inds.mse.path.ori, inds.mse.path.prad),
+                          r2 = c(inds.path.r2, inds.r2.path.prad),
+                          r2_lin = c(inds.path.cors2 , inds.cors.path.prad2)**2,
+                    Dataset = rep(c("Validation", "PRAD"), c(length(train_ind), ncol(vst_prad))),
+                      barcode = c(colnames(vst)[train_ind], colnames(vst_prad)),
+                      tumor = c(labels[train_ind], rep("TCGA-PRAD", ncol(vst_prad)))) %>%
+  mutate(Dataset = factor(Dataset, levels = c("Validation", "PRAD"))) %>%
+  left_join(rbind(phenos, phenos.prad), by = "barcode") %>%
+  mutate(Condition = ifelse(condition == "normal", "Normal", "Cancer"))
+
+
+
+png("figures/mse_individuals_path_genes_validation.png", width = 3000)
+df.inds_mse_path %>%
+  ggplot(aes(x = tumor, y = mse)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(~ Dataset, scale = "free_x", space = "free_x")
+dev.off()
+
+png("figures/mse_individuals_path_condition_validation.png", height = 400)
+df.inds_mse_path %>%
+  mutate(MSE = ifelse(mse > 2, 2, mse)) %>%
+  ggplot(aes(x = Condition, y = MSE)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(~ Dataset, scale = "free_x", space = "free_x")
+dev.off()
+
+
+
+png("figures/mse_individuals_path_seqcenter_validation.png")
+df.inds_mse_path %>%
+  mutate(MSE = ifelse(mse > 2, 2, mse)) %>%
+  ggplot(aes(x = center, y = MSE)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(~ Dataset, scale = "free_x", space = "free_x")
+dev.off()
+
+
+
+
+
+png("figures/r2_individuals_path_genes_validation.png", width = 3000)
+df.inds_mse_path %>%
+  gather(Measure, Value, 2:3) %>%
+  ggplot(aes(x = tumor, y = Value)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scale = "free", space = "free_x")
+dev.off()
+
+png("figures/r2_individuals_path_condition_validation.png", height = 400)
+df.inds_mse_path %>%
+  gather(Measure, Value, 2:3) %>%
+  ggplot(aes(x = Condition, y = Value)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scale = "free", space = "free_x")
+dev.off()
+
+
+
+png("figures/r2_individuals_path_seqcenter_validation.png")
+df.inds_mse_path %>%
+  gather(Measure, Value, 2:3) %>%
+  ggplot(aes(x = center, y = Value)) +
+  geom_boxplot() +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scale = "free", space = "free_x")
+dev.off()
+
+
+## Correlation between PCs
+auto.prad.f <- read.table("results/TCGA_gexp_coding_PRAD/autoencod_v2.3/model_features/dense.tsv", header = TRUE)
+auto.pc.prad.feat <-  prcomp(auto.prad.f)
+
+par(mfrow = c(1, 3))
+plot(pc.prad.ori$x, col = factor(vst_prad$sample_type), main = "Original data")
+plot(pc.prad.feat$x, col = factor(vst_prad$sample_type), main = "Features")
+plot(auto.pc.prad.feat$x, col = factor(vst_prad$sample_type), main = "Autoencoder Features")
+
+vars <- cumsum(pc.prad.ori$sdev**2)/sum(pc.prad.ori$sdev**2)
+
+cors <- diag(cor(pc.prad.ori$x, pc.prad.feat$x))
+
+png("figures/PRAD_cor_pcs_ori_model.png")
+tibble(Correlation = abs(cors), PC = seq_len(length(cors)), Variance = vars) %>%
+  filter(PC < 100) %>%
+  gather(Measure, Value, c(1, 3)) %>%
+  ggplot(aes(x = PC, y = Value, group = Measure, color = Measure)) +
+  geom_line() +
+  theme_bw()
+dev.off()
+
+pc.ori <- prcomp(t(ori.val), rank. = 10 )
+pc.pred <- prcomp(t(base.val), rank. = 10)
+
+
+
+
 
 ## Load vsd data ####
 vsd.ori <- loadHDF5SummarizedExperiment("results/TCGA_gexp_combat_coding/", prefix = "vsd_norm")

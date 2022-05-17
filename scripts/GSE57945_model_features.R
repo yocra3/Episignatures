@@ -64,6 +64,77 @@ getPathwayCor <- function(path, se_pc, se_path){
 
 
 
+## Compute mse
+paths <- read.table("results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_trained/pathways_names.txt", header = TRUE)
+paths.vec <- as.character(paths[, 1])
+
+kegg.map <- read.table("results/preprocess/go_kegg_final_gene_map.tsv", header = TRUE)
+kegg.N <- table(kegg.map$PathwayID)
+kegg.genes.N <- kegg.map %>%
+  group_by(Symbol) %>%
+  summarize(N = n())
+
+ori <- h5read("results/SRP042228/assay_reshaped_coding_std_gse.h5","methy")
+
+
+base <- h5read("results/SRP042228/comb_paths3_v3.6/model_features/autoencoder_output.h5", "auto")
+auto <- h5read("results/SRP042228/autoencod_v2.3/model_features/autoencoder_output.h5", "auto")
+
+vst <- loadHDF5SummarizedExperiment("results/SRP042228/", prefix = "vsd_norm")
+
+
+genes <- read.table("./results/TCGA_gexp_combat_coding/input_genes.txt")
+rownames(ori) <- rownames(base) <- rownames(auto) <- as.character(genes$V1)
+
+
+
+## MSE
+mean.mse.base <- mean((ori - base)**2)
+mean.mse.auto <- mean((ori - auto)**2)
+
+genes.mse.base <- rowMeans((ori - base)**2)
+genes.cors.base <- sapply(seq_len(nrow(ori)), function(i) cor(ori[i, ], base[i, ], method = "spearman"))
+names(genes.cors.base) <- rownames(ori)
+
+genes.cors.base2 <- sapply(seq_len(nrow(ori)), function(i) cor(ori[i, ], base[i, ], method = "pearson"))
+
+mean.mse.auto <- mean((ori - auto)**2)
+genes.mse.auto <- rowMeans((ori - auto)**2)
+genes.cors.auto <- sapply(seq_len(nrow(ori)), function(i) cor(ori[i, ], auto[i, ], method = "spearman"))
+names(genes.cors.auto) <- rownames(ori)
+
+genes.cors.auto2 <- sapply(seq_len(nrow(ori)), function(i) cor(ori[i, ], auto[i, ], method = "pearson"))
+
+## R2
+r2.base <- 1 - sum((ori - base)**2)/sum(( ori - rowMeans(ori))**2)
+r2.auto <- 1 - sum((ori - auto)**2)/sum((ori - rowMeans(ori))**2)
+
+genes.r2.base <- 1 - rowSums((ori - base)**2)/rowSums(( ori - rowMeans(ori))**2)
+genes.r2.auto <- 1 - rowSums((ori - auto)**2)/rowSums((ori - rowMeans(ori))**2)
+
+
+df.cors_mse <- tibble(MSE = c(genes.mse.base, genes.mse.auto), correlation = c(genes.cors.auto, genes.cors.auto),
+  r2 = c(genes.r2.base, genes.r2.auto), r2_lineal = c(genes.cors.base2, genes.cors.auto2)**2,
+  Symbol = c(names(genes.cors.base), names(genes.cors.auto)),
+  Dataset = rep(c("Model", "Autoencoder"), c(length(genes.cors.base), length(genes.cors.auto))))   %>%
+  left_join(kegg.genes.N, by = "Symbol") %>%
+  mutate(N = ifelse(is.na(N), 0, N),
+          path = ifelse(N == 0, "out", "in"),
+          Dataset = factor(Dataset, levels = c("Model", "Autoencoder")))
+
+
+
+#
+df.cors_mse  %>%
+  mutate(MSE = ifelse(MSE > 2.4, 2.4, MSE),
+        class = ifelse(N > 5, "6+", ifelse(N > 2, "3-5", N)),
+         Class = factor(class, levels = c("0", "1", "2", "3-5", "6+"))) %>%
+  gather(Measure, Value, 1:2) %>%
+  ggplot(aes(x = Class, y = Value)) +
+  geom_boxplot() +
+  xlab("N pathways per gene") +
+  theme_bw() +
+  facet_grid(Measure ~ Dataset, scales  = "free_y")
 
 
 ## Load vsd data ####

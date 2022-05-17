@@ -23,6 +23,89 @@ import os
 from numpy import array, argmax
 from tensorflow.keras.models import Sequential, Model
 
+## Train
+f = h5py.File("results/TCGA_gexp_coding_noPRAD/train_assay_reshaped_standardized.h5", 'r')
+methy = f['methy'][...]
+f.close()
+
+## PRAD
+f = h5py.File("results/TCGA_gexp_coding_noPRAD/prad_assay_reshaped_standardized.h5", 'r')
+prad = f['methy'][...]
+f.close()
+
+
+## GSE57945
+f = h5py.File('results/SRP042228/assay_reshaped_coding_std_gse.h5', 'r')
+ibd = f['methy'][...]
+f.close()
+
+
+## V3.6
+model = tf.keras.models.load_model('results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_trained/TCGA_gexp_coding_noPRAD')
+Y_pred = model.predict(methy)
+
+f = h5py.File('results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_features/autoencoder_output.h5', 'w')
+dataset_input = f.create_dataset('auto', (Y_pred.shape[0], Y_pred.shape[1]))
+dataset_input[...] = Y_pred
+f.close()
+
+
+
+Y_prad = model.predict(prad)
+
+f = h5py.File('results/TCGA_gexp_coding_PRAD/comb_paths3_v3.6/model_features/autoencoder_output.h5', 'w')
+dataset_input = f.create_dataset('auto', (Y_prad.shape[0], Y_prad.shape[1]))
+dataset_input[...] = Y_prad
+f.close()
+
+Y_ibd = model.predict(ibd)
+
+f = h5py.File('results/SRP042228/comb_paths3_v3.6/model_features/autoencoder_output.h5', 'w')
+dataset_input = f.create_dataset('auto', (Y_ibd.shape[0], Y_ibd.shape[1]))
+dataset_input[...] = Y_ibd
+f.close()
+
+## autoencoder
+auto = tf.keras.models.load_model('results/TCGA_gexp_coding_noPRAD/autoencod_v2.3/model_trained/TCGA_gexp_coding_noPRAD')
+Y_pred_a = auto.predict(methy)
+
+f = h5py.File('results/TCGA_gexp_coding_noPRAD/autoencod_v2.3/model_features/autoencoder_output.h5', 'w')
+dataset_input = f.create_dataset('auto', (Y_pred_a.shape[0], Y_pred_a.shape[1]))
+dataset_input[...] = Y_pred_a
+f.close()
+
+
+
+Y_prad_a = auto.predict(prad)
+
+f = h5py.File('results/TCGA_gexp_coding_PRAD/autoencod_v2.3/model_features/autoencoder_output.h5', 'w')
+dataset_input = f.create_dataset('auto', (Y_prad_a.shape[0], Y_prad_a.shape[1]))
+dataset_input[...] = Y_prad_a
+f.close()
+
+
+Y_ibd_a = auto.predict(ibd)
+
+f = h5py.File('results/SRP042228/autoencod_v2.3/model_features/autoencoder_output.h5', 'w')
+dataset_input = f.create_dataset('auto', (Y_ibd_a.shape[0], Y_ibd_a.shape[1]))
+dataset_input[...] = Y_ibd_a
+f.close()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### Old
 f = h5py.File('./results/TCGA_gexp/assay_reshaped_norm.h5', 'r')
 methy = f['methy'][...]
 f.close()

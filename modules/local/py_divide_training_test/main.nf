@@ -21,7 +21,8 @@ process PY_DIVIDE_TRAIN_TEST {
     output:
     path("train.pb"), emit: train
     path("test.pb"), emit: test
-
+    path("test_indices.csv"), emit: indices
+    
     script:
     """
     divide_train_test.py $prop $autoencoder

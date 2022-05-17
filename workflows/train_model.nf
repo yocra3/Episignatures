@@ -52,7 +52,7 @@ params_name = "v1"
 params_name = "${params.params_name}"
 
 
-include { PY_DIVIDE_TRAIN_TEST } from '../modules/local/py_divide_training_test/main.nf' addParams( options: [publish_files : ['s':'']])
+include { PY_DIVIDE_TRAIN_TEST } from '../modules/local/py_divide_training_test/main.nf' addParams( options: [publish_dir: "${name}/${params_name}/model_trained/"])
 include { RANDOM_SEARCH } from '../modules/local/random_search/main.nf' addParams( options: [publish_dir: "${name}/${params_name}/random_search/"])
 include { TRAIN_MODEL } from '../modules/local/py_train_model/main.nf' addParams( options: [publish_dir: "${name}/${params_name}/model_trained/"])
 include { PY_EXPORT_RESULTS } from '../modules/local/py_export_results/main.nf' addParams( options: [publish_dir: "${name}/${params_name}/model_trained/"])

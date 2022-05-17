@@ -98,48 +98,24 @@ project[vst_coding$sample_type == "Solid Tissue Normal"] <- "Normal"
 write.table(project, file = paste0(gexp_fold_cod, "individuals_labels.txt"), quote = FALSE,
             row.names = FALSE, col.names = FALSE)
 
-## Select genes present in GOs
-gexp_fold_go <- "results/TCGA_gexp_go/"
+gexp_fold_cod2 <- "results/TCGA_gexp_coding_noPRAD/"
 
-genevec <- factor(rep(c(0, 1), each = length(genes)/2))
-names(genevec) <- genes
+vst_train <- vst_coding[, vst_coding$project_id != "TCGA-PRAD"]
+saveHDF5SummarizedExperiment(vst_train, "results/TCGA_gexp_coding_noPRAD/", prefix = "vsd_norm_train")
 
-goData <- new("topGOdata",
-              ontology = "BP",
-              allGenes = as.factor(genevec),
-              annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "Ensembl")
-vsd.go <- vsd[feasible(goData), ]
+vst_prad <- vst_coding[, vst_coding$project_id == "TCGA-PRAD"]
+saveHDF5SummarizedExperiment(vst_prad, "results/TCGA_gexp_coding_noPRAD/", prefix = "vsd_norm_prad")
 
-## Output vsd values
-saveHDF5SummarizedExperiment(vsd.go, "results/TCGA_gexp_go/", prefix = "vsd_norm")
+vst_prad_tum <- vst_prad[, !is.na(vst_prad$paper_Reviewed_Gleason_category)]
+saveHDF5SummarizedExperiment(vst_prad_tum, "results/TCGA_gexp_coding_noPRAD/", prefix = "vsd_norm_prad_tumor")
 
-
-## Write gene names
-genes <- rownames(vsd.go)
-write.table(genes, file =  paste0(gexp_fold_go, "input_genes.txt"), quote = FALSE,
+genes <- rownames(vst_train)
+write.table(genes, file =  paste0(gexp_fold_cod2, "input_genes.txt"), quote = FALSE,
             row.names = FALSE, col.names = FALSE)
 
+# Get labels
+project <- as.character(vst_train$project_id)
+project[vst_train$sample_type == "Solid Tissue Normal"] <- "Normal"
 
-## Create labels file
-project <- gexp_tcga$project_id
-project[gexp_tcga$sample_type == "Solid Tissue Normal"] <- "Normal"
-write.table(project, file = paste0(gexp_fold_go, "individuals_labels.txt"), quote = FALSE,
-            row.names = FALSE, col.names = FALSE)
-
-## Train for association with sex
-sex <- gexp_tcga$gender
-sex[is.na(sex)] <- "female"
-project2 <- paste(project, sex)
-write.table(project2, file = paste0(gexp_fold_go, "individuals_labels_sex.txt"), quote = FALSE,
-            row.names = FALSE, col.names = FALSE)
-
-
-## Select autosomic
-rowRanges(vsd.go) <- rowRanges(gexp_tcga)[rownames(vsd.go)]
-
-vsd.go.auto <- vsd.go[!seqnames(vsd.go) %in% c("chrX", "chrY"), ]
-saveHDF5SummarizedExperiment(vsd.go.auto, "results/TCGA_gexp_go/", prefix = "vsd_norm_auto")
-
-genes.auto <- rownames(vsd.go.auto)
-write.table(genes.auto, file =  paste0(gexp_fold_go, "input_genes_autosomics.txt"), quote = FALSE,
+write.table(project, file = paste0(gexp_fold_cod2, "individuals_labels.txt"), quote = FALSE,
             row.names = FALSE, col.names = FALSE)
