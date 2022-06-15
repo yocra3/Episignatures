@@ -4,7 +4,7 @@ python
 
 #'#################################################################################
 #'#################################################################################
-#' Combine methy from hdf5 data and labels
+#' Standardize Gene expression data
 #'#################################################################################
 #'#################################################################################
 
@@ -192,6 +192,24 @@ dataset_input = f.create_dataset('methy', (x_prad_array.shape[0], x_prad_array.s
 dataset_input[...] = x_prad_array
 f.close()
 
+
+### Adapt gtex
+f = h5py.File('results/GTEx/vst_all_assays.h5', 'r')
+meth_matrix = f['assay001']
+gtex = meth_matrix[...]
+f.close()
+
+means_gtex = np.mean(gtex, axis = 0)
+stds_gtex = np.std(gtex, axis = 0)
+x_gtex = (gtex - means_gtex)/stds_gtex
+
+# Save reshaped training data
+f = h5py.File('results/GTEx/all_reshaped_standardized.h5', 'w')
+dataset_input = f.create_dataset('methy', (x_gtex.shape[0], x_gtex.shape[1]))
+dataset_input[...] = x_gtex
+f.close()
+
+
 ### Adapt prostate
 f = h5py.File('results/GTEx/vst_prostate_assays.h5', 'r')
 meth_matrix = f['assay001']
@@ -223,4 +241,21 @@ x_testis = (testis - means_testis)/stds_testis
 f = h5py.File('results/GTEx/testis_reshaped_standardized.h5', 'w')
 dataset_input = f.create_dataset('methy', (x_testis.shape[0], x_testis.shape[1]))
 dataset_input[...] = x_testis
+f.close()
+
+### Change HELIX
+f = h5py.File('results/HELIX/network_genesassays.h5', 'r')
+meth_matrix = f['assay001']
+x_array = meth_matrix[...]
+f.close()
+
+means_array = np.mean(x_array, axis = 0)
+stds_array = np.std(x_array, axis = 0)
+x_helix_array = (x_array - means_array)/stds_array
+x_helix_array[:, stds_array == 0] = 0
+
+# Save reshaped training data
+f = h5py.File('results/HELIX/helix_array_reshaped_standardized.h5', 'w')
+dataset_input = f.create_dataset('methy', (x_helix_array.shape[0], x_helix_array.shape[1]))
+dataset_input[...] = x_helix_array
 f.close()

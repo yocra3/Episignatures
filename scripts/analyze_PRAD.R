@@ -12,6 +12,9 @@ library(cowplot)
 library(fgsea)
 library(e1071)
 library(HDF5Array)
+library(hipathia)
+library(org.Hs.eg.db)
+
 
 
 load("data/tcga_gexp_combat.Rdata")
@@ -42,9 +45,9 @@ data.frame(pc.ori$x, var = prad$paper_Subtype) %>% ggplot(aes(x = PC1, y = PC2, 
 
 
 dds <- DESeq(ddsSE)
-res <- results(dds)
-res$p.adj.bf <- p.adjust(res$pvalue )
-save(res, file = "results/TCGA_PRAD/genes_results.Rdata")
+res_prad <- results(dds)
+res_prad$p.adj.bf <- p.adjust(res_prad$pvalue )
+save(res_prad, file = "results/TCGA_PRAD/genes_results.Rdata")
 
 ## Run GO enrichment
 # dif.genes <- as.numeric(res$padj < 0.05)
@@ -60,54 +63,73 @@ save(res, file = "results/TCGA_PRAD/genes_results.Rdata")
 ## Run pathways differential Analysis
 mod <- model.matrix(~ gleason + paper_Subtype + age_at_index + race, colData(prad))
 lm.path <- lmFit(t(prad.feat), mod) %>% eBayes()
-tab.path <- topTable(lm.path, coef = 2, n = Inf)
-tab.path$category <- rownames(tab.path)
-save(tab.path, file = "results/TCGA_PRAD/pathways_results.Rdata")
+tab.path_prad <- topTable(lm.path, coef = 2, n = Inf)
+tab.path_prad$category <- rownames(tab.path_prad)
 
-tab.path$DE_prop <- sapply( tab.path$category, function(cat) {
+tab.path_prad$DE_prop <- sapply( tab.path_prad$category, function(cat) {
   genes <- subset(path.map, PathwayID  == cat )$Symbol
-  mini_tab <- res[genes, ]
-  mean(mini_tab$padj  < 0.05)
+  mini_tab <- res_prad[genes, ]
+  mean(mini_tab$padj  < 0.05, na.rm = TRUE)
 })
+save(tab.path_prad, file = "results/TCGA_PRAD/pathways_results.Rdata")
 
 
 png("figures/TCGA_propDE_vs_pvalPaths.png")
-ggplot(tab.path, aes(x = DE_prop, y = -log10(P.Value ))) +
+ggplot(tab.path_prad, aes(x = DE_prop, y = -log10(P.Value ))) +
  geom_point() +
  scale_x_continuous(name = "Proportion of genes DE") +
  scale_y_continuous(name = "-log10 P-value Pathways") +
  theme_bw()
 dev.off()
-cor(tab.path$ DE_prop, -log10(tab.path$P.Value), use = "complete")
-# [1] 0.3922032
+cor(tab.path_prad$ DE_prop, -log10(tab.path_prad$P.Value), use = "complete")
+# [1] 0.3397049
+
+cor(tab.path_prad$DE_prop, abs(tab.path_prad$logFC), use = "complete")
+# 0.3007257
 
 
+cor(tab.path_prad$DE_prop[tab.path_prad$DE_prop > 0 ], abs(tab.path_prad$logFC)[tab.path_prad$DE_prop > 0 ], use = "complete")
+# 0.3021887 
 # comb.df <- left_join(tab.path, gos.mod, by = "category")
 # comb.df$min_p <- pmin(comb.df$over_represented_pvalue, comb.df$under_represented_pvalue)
 # plot(-log10(comb.df$min_p), -log10(comb.df$P.Value ))
 # cor(-log10(comb.df$min_p), -log10(comb.df$P.Value ), use = "complete")
 
 ## fgsea
-ranks <- res$log2FoldChange
+ranks <- res_prad$log2FoldChange
 ranks[is.na(ranks)] <- 0
-names(ranks) <- rownames(res)
 
-names(paths.vec) <- paths.vec
-pathways <- lapply( paths.vec, function(x) subset(path.map, PathwayID  == x )$Symbol)
-fgseaRes <- fgsea(pathways = pathways, stats = ranks)
-fgseaRes$category <- fgseaRes$pathway
-fgseaRes_tcga <- fgseaRes
-save(fgseaRes_tcga, file = "results/TCGA_PRAD/fgsea_results.Rdata")
+entrez_ids <- mapIds(org.Hs.eg.db, rownames(res_prad), keytype="ENSEMBL", column="ENTREZID")
+names(ranks) <- entrez_ids
 
-df.comb2 <- left_join(fgseaRes, tab.path, by = "category")
+pathways <- reactomePathways(entrez_ids)
+# names(paths.vec) <- paths.vec
+# pathways <- lapply( paths.vec, function(x) subset(path.map, PathwayID  == x )$Symbol)
+fgseaRes_prad <- fgsea(pathways = pathways, stats = ranks)
+save(fgseaRes_prad, file = "results/TCGA_PRAD/fgsea_results.Rdata")
+#
+# df.comb2 <- left_join(fgseaRes, tab.path, by = "category")
+#
+# png("figures/TCGA_pval_gseavsPaths.png")
+# ggplot(df.comb2, aes(x = -log10(P.Value ), y = -log10(pval ))) +
+#  geom_point() +
+#  scale_y_continuous(name = "-log10 P-value GSEA") +
+#  scale_x_continuous(name = "-log10 P-value Pathways") +
+#  theme_bw()
+# dev.off()
 
-png("figures/TCGA_pval_gseavsPaths.png")
-ggplot(df.comb2, aes(x = -log10(P.Value ), y = -log10(pval ))) +
- geom_point() +
- scale_y_continuous(name = "-log10 P-value GSEA") +
- scale_x_continuous(name = "-log10 P-value Pathways") +
- theme_bw()
-dev.off()
+
+## hipathia
+trans_data <- translate_data(vst.prad, "hsa")
+exp_data <- normalize_data(trans_data)
+hip_pathways <- load_pathways(species = "hsa")
+
+hip.res_prad <- hipathia(exp_data, hip_pathways, decompose = FALSE, verbose = TRUE)
+hip.path_vals <- get_paths_data(hip.res_prad )
+hip.comp_prad <- do_wilcoxon(hip.path_vals, hip.path_vals$gleason, g1 = "High", g2 = "Low")
+
+save(hip.comp_prad, file = "results/TCGA_PRAD/hipathia.res.Rdata")
+
 
 ## Train SVM to classify gleason
 colnames(prad.feat) <- gsub(":", "_", colnames( prad.feat))

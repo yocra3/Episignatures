@@ -13,6 +13,7 @@ library(rjson)
 library(rhdf5)
 library(HDF5Array)
 library(rtracklayer)
+library(cowplot)
 
 
 
@@ -55,7 +56,7 @@ makeDFsum <- function(cors, mod_name){
 
 }
 
-cancer.keg <- c("hsa04010", "hsa04310", "hsa04350", "hsa04370", "hsa04630", "hsa04024", "hsa04151", "hsa04150", "hsa04110", "hsa04210", "hsa04115", "hsa04510", "hsa04520", "hsa03320")
+# cancer.keg <- c("hsa04010", "hsa04310", "hsa04350", "hsa04370", "hsa04630", "hsa04024", "hsa04151", "hsa04150", "hsa04110", "hsa04210", "hsa04115", "hsa04510", "hsa04520", "hsa03320")
 
 kegg.map <- read.table("results/preprocess/go_kegg_gene_map.tsv", header = TRUE)
 kegg.N <- table(kegg.map$PathwayID)
@@ -173,6 +174,30 @@ df.path_sel %>%
     facet_wrap(~ training)
 dev.off()
 
+plot_rep <- ggplot(df.path_sel, aes(x = training, y = minCor)) +
+ geom_boxplot() +
+ scale_x_discrete(name = "") +
+ scale_y_continuous(name = "Replicability") +
+ theme_bw() +
+ facet_wrap(~ group)
+
+plot_genes <-  df.path_sel %>%
+   filter(group == "All GOs + KEGGs") %>%
+   ggplot(aes(x = Freq, y = minCor)) +
+     geom_point() +
+     scale_x_log10(name = "Genes per pathway") +
+     scale_y_continuous(name = "Replicability") +
+     theme_bw() +
+     facet_wrap(~ training)
+
+png("figures/replicability_panel.png", height = 600)
+plot_grid(plot_rep, plot_genes, ncol = 1, labels = c("A", "B"))
+dev.off()
+
+
+df.path_sel %>% group_by(training, group) %>%
+summarize(p = mean(minCor > 0.7))
+
 ## Models comparison
 df.mod <- Reduce(rbind, list(base2,post2, pre2, pre2.post)) %>%
   left_join(mutate(kegg.df.com, path = pathID) %>% select(path, top_cat, category), by = "path") %>%
@@ -195,7 +220,9 @@ df.train <- Reduce(rbind, list(base2, base3, base5)) %>%
   left_join(mutate(kegg.df.com, path = pathID) %>% select(path, top_cat, category), by = "path") %>%
   mutate(Model = factor(model , levels = c("Pathway", "Pathway + Dense", "Dense + Pathway", "Dense + Pathway + Dense")),
         training = gsub("primed + ", "", training, fixed = TRUE),
-        Training = factor(training , levels = c("pretrained", "dropout", "pretrained + dropout")))
+        Training = factor(training , levels = c("pretrained", "dropout", "pretrained + dropout")),
+      Training = recode(Training, pretrained = "Pathway", dropout = "Dropout (no pretraining)",
+                `pretrained + dropout` = "Dropout (pretraining)"))
 
 
 

@@ -7,3 +7,7 @@ RUN R -e 'BiocManager::install(c("minfi", "Gviz", "a4Base", "tidyverse", "limma"
 # Install github packages (last commit when creating docker)
 RUN R -e 'devtools::source_url("https://raw.githubusercontent.com/isglobal-brge/EASIER/HEAD/installer.R")' ## EASIER - for Enrichments
 RUN R -e 'devtools::install_github("perishky/meffil")' ## meffil - for preprocessing
+
+# Install required Bioconductor packages
+RUN R -e 'BiocManager::install(c("hipathia", "fgsea", "pheatmap", "DESeq2"))'
+RUN R -e 'BiocManager::install(c("reactome.db"))'

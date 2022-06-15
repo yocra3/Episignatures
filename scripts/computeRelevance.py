@@ -30,22 +30,23 @@ import copy
 import gc
 
 ## filt2 - V6.2
-model = tf.keras.models.load_model('results/TCGA_gexp_combat_coding_std/kegg_filt2_v6.2/model_trained/TCGA_gexp_combat_coding_std')
-w = model.get_weights()
-pickle.dump( w, open('results/TCGA_gexp_combat_coding_std/kegg_filt2_v6.2/model_trained/model_weigths.pb', "wb" ), protocol = 4 )
-
+model = tf.keras.models.load_model('results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_trained/TCGA_gexp_coding_noPRAD')
 w = model.get_weights()
 
 model2 = Sequential()
 model2.add(Dense(w[0].shape[1], input_dim = w[0].shape[0], activation = 'elu'))
-model2.add(Dense(w[5].shape[1], activation = 'elu'))
-model2.add(Dense(w[10].shape[1]))
+model2.add(Dense(w[5].shape[1]))
 
-new_w = [w[i] for i in [0, 1, 5, 6, 10, 11]]
+new_w = [w[i] for i in [0, 1, 5, 6]]
 new_w[0] = w[0] * w[2]
-new_w[2] = w[5] * w[7]
+new_w[2] = w[5]
 
 model2.set_weights(new_w)
+
+f = h5py.File('results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_trained/model_weights.h5', 'w')
+dataset_input = f.create_dataset('weights_paths', (new_w[0].shape[0], new_w[0].shape[1]))
+dataset_input[...] = new_w[0]
+f.close()
 
 #
 # def relprop_dense(self, x, w, r):
@@ -131,106 +132,63 @@ class RelevancePropagation(object):
         x = self.rescale(x)
         return x
 
-f = h5py.File('results/TCGA_gexp_combat_coding/assay_reshaped_standardized.h5', 'r')
+f = h5py.File('results/HELIX/helix_array_reshaped_standardized.h5', 'r')
 ori = f['methy'][...]
 f.close()
 
 ## Define models by parts to reduce size of full matrix
-model_pathways = Model(inputs=model2.input, outputs=model2.layers[1].output)
+model_pathways = Model(inputs=model2.input, outputs=model2.layers[0].output)
 
-f = h5py.File('results/TCGA_gexp_combat_coding_std/kegg_filt2_v6.2/relevance/relevance_genes_pathways.h5', 'w')
-for i in range(model_pathways.output.shape[1]):
-    print(i)
-    dataset_input = f.create_dataset('patwhays_' + str(i), (ori.shape[0], ori.shape[1]))
-    model_pathways = Model(inputs=model2.input, outputs=model2.layers[1].output)
-    lrp_pathways = RelevancePropagation(model_pathways, 1.0e-9, "z_plus")
-    dataset_input[...] = lrp_pathways.run(ori, i).transpose()
-    del lrp_pathways
-    del dataset_input
-    del model_pathways
-    gc.collect()
-    K.clear_session()
-f.close()
-
-ori_paths = model_pathways.predict(ori)
-
-f = h5py.File('results/TCGA_gexp_combat_coding_std/kegg_filt2_v6.2/relevance/relevance_pathways_out.h5', 'w')
-for i in range(ori.shape[1]):
-    print(i)
-    dataset_input = f.create_dataset('out_' + str(i), (ori_paths.shape[0], ori_paths.shape[1]))
-    model_out = Model(inputs=model2.layers[1].output, outputs=model2.output)
-    lrp_out = RelevancePropagation(model_out, 1.0e-9, "z_plus")
-    dataset_input[...] =  lrp_out.run(ori_paths, i).transpose()
-    del lrp_out
-    del dataset_input
-    del model_out
-    gc.collect()
-    K.clear_session()
+f = h5py.File('results/HELIX/comb_paths3_v3.6/relevance/relevance_genes_GO0032688.h5', 'w')
+dataset_input = f.create_dataset('GO0032688', (ori.shape[0], ori.shape[1]))
+lrp_pathways = RelevancePropagation(model_pathways, 1.0e-9, "z_plus")
+dataset_input[...] = lrp_pathways.run(ori, 681).transpose()
 f.close()
 
 
-#' Recreate model with TF 2.2
-#'#################################################################################
-docker run -it -v /home/SHARED/PROJECTS/Episignatures:/home/SHARED/PROJECTS/Episignatures -w "$PWD" srappoccio/innvestigate_tensorflow  /bin/bash
-
-python
-
-import pickle
-import h5py
-import csv
-import numpy as np
-import sys
-import scipy
-import functools
-import operator
-import pandas as pd
-import tensorflow as tf
-import os
-import innvestigate
-import keras-explain
-
-from numpy import array, argmax
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Dense
-
-## Load weights
-A = open('results/TCGA_gexp_combat_coding_std/kegg_filt2_v6.2/model_trained/model_weigths.pb', 'rb')
-w = pickle.load(A)
-A.close()
-
-## Define model
-model = Sequential()
-model.add(Dense(w[0].shape[1], input_dim = w[0].shape[0], activation = 'elu'))
-model.add(Dense(w[5].shape[1], activation = 'elu'))
-model.add(Dense(w[10].shape[1]))
-
-new_w = [w[i] for i in [0, 1, 5, 6, 10, 11]]
-new_w[0] = w[0] * w[2]
-new_w[2] = w[5] * w[7]
-
-model.set_weights(new_w)
-
-## Check prediction
-f = h5py.File('results/TCGA_gexp_combat_coding/assay_reshaped_standardized.h5', 'r')
-ori = f['methy'][...]
-f.close()
+# f = h5py.File('results/TCGA_gexp_combat_coding_std/kegg_filt2_v6.2/relevance/relevance_genes_pathways.h5', 'w')
+# for i in range(model_pathways.output.shape[1]):
+#     print(i)
+#     dataset_input = f.create_dataset('patwhays_' + str(i), (ori.shape[0], ori.shape[1]))
+#     model_pathways = Model(inputs=model2.input, outputs=model2.layers[1].output)
+#     lrp_pathways = RelevancePropagation(model_pathways, 1.0e-9, "z_plus")
+#     dataset_input[...] = lrp_pathways.run(ori, i).transpose()
+#     del lrp_pathways
+#     del dataset_input
+#     del model_pathways
+#     gc.collect()
+#     K.clear_session()
+# # f.close()
 
 
-f = h5py.File('results/TCGA_gexp_combat_coding_std/kegg_filt2_v6.2/model_features/autoencoder_output.h5', 'r')
-ori_auto = f['auto'][...]
-f.close()
-
-new_val = model.predict(ori)
-np.max(np.abs(new_val - ori_auto))
-
-## Apply innvestigate
-analyzer = innvestigate.create_analyzer("lrp.sequential_preset_a", model, neuron_selection_mode="index")
-analysis = analyzer.analyze(ori[0, :], 0)
-
-analyzer = innvestigate.create_analyzer("lrp.sequential_preset_a", model)
-analysis = analyzer.analyze(ori[0, :])
-
-
-gradient_analyzer = innvestigate.create_analyzer("lrp.z", model)
-# Applying the analyzer
-analysis = gradient_analyzer.analyze(ori)
+# f = h5py.File('results/TCGA_gexp_combat_coding_std/kegg_filt2_v6.2/relevance/relevance_genes_pathways.h5', 'w')
+# for i in range(model_pathways.output.shape[1]):
+#     print(i)
+#     dataset_input = f.create_dataset('patwhays_' + str(i), (ori.shape[0], ori.shape[1]))
+#     model_pathways = Model(inputs=model2.input, outputs=model2.layers[1].output)
+#     lrp_pathways = RelevancePropagation(model_pathways, 1.0e-9, "z_plus")
+#     dataset_input[...] = lrp_pathways.run(ori, i).transpose()
+#     del lrp_pathways
+#     del dataset_input
+#     del model_pathways
+#     gc.collect()
+#     K.clear_session()
+# # f.close()
+#
+# ori_paths = model_pathways.predict(ori)
+#
+# f = h5py.File('results/TCGA_gexp_combat_coding_std/kegg_filt2_v6.2/relevance/relevance_pathways_out.h5', 'w')
+# for i in range(ori.shape[1]):
+#     print(i)
+#     dataset_input = f.create_dataset('out_' + str(i), (ori_paths.shape[0], ori_paths.shape[1]))
+#     model_out = Model(inputs=model2.layers[1].output, outputs=model2.output)
+#     lrp_out = RelevancePropagation(model_out, 1.0e-9, "z_plus")
+#     dataset_input[...] =  lrp_out.run(ori_paths, i).transpose()
+#     del lrp_out
+#     del dataset_input
+#     del model_out
+#     gc.collect()
+#     K.clear_session()
+# f.close()
+#
+#

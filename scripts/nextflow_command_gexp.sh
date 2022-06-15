@@ -479,6 +479,11 @@ nextflow run workflows/train_model.nf --hdf5_file results/GSE169038/prad_array_r
 --name GSE169038 --params_name comb_paths3_v3.6 --step features \
 --model  results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_trained/TCGA_gexp_coding_noPRAD -resume -profile docker
 
+## SRP042228  pathways - v3.6 features
+nextflow run workflows/train_model.nf --hdf5_file results/SRP042228/assay_reshaped_coding_std_gse.h5  \
+--name SRP042228 --params_name comb_paths3_v3.6 --step features \
+--model  results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_trained/TCGA_gexp_coding_noPRAD -resume -profile docker
+
 
 ## GTEX prostate pathways - v3.6 features
 nextflow run workflows/train_model.nf --hdf5_file results/GTEx/prostate_reshaped_standardized.h5 \
@@ -490,6 +495,10 @@ nextflow run workflows/train_model.nf --hdf5_file results/GTEx/testis_reshaped_s
 --name GTEx_testis --params_name comb_paths3_v3.6 --step features \
 --model  results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_trained/TCGA_gexp_coding_noPRAD -resume -profile docker
 
+## HELIX gexp array pathways - v3.6 features
+nextflow run workflows/train_model.nf --hdf5_file results/HELIX/helix_array_reshaped_standardized.h5  \
+--name HELIX --params_name comb_paths3_v3.6 --step features \
+--model  results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_trained/TCGA_gexp_coding_noPRAD -resume -profile docker
 
 ## Train TCGA gexp protein coding pathways filtered2 combat standardized - v3.7
 nextflow run workflows/train_model.nf --hdf5_file results/TCGA_gexp_coding_noPRAD/train_assay_reshaped_standardized.h5 \
