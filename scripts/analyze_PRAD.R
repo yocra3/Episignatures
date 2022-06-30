@@ -18,12 +18,12 @@ library(org.Hs.eg.db)
 
 
 load("data/tcga_gexp_combat.Rdata")
-genes <- read.table("./results/TCGA_gexp_combat_coding/input_genes.txt")
+genes <- read.table("./results/GTEx_coding/input_genes.txt")
 
-path.map <- read.table("results/preprocess/go_kegg_final_gene_map.tsv", header = TRUE)
+path.map <- read.table("results/GTEx_coding/go_kegg_final_gene_map.tsv", header = TRUE)
 
-prad.feat <- read.table("results/TCGA_gexp_coding_PRAD_tumor/comb_paths3_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
-paths <- read.table("results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_trained/pathways_names.txt", header = TRUE)
+prad.feat <- read.table("results/GTEx_coding_PRAD_tumor/paths_filt2_full_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+paths <- read.table("results/GTEx_coding/paths_filt2_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
 paths.vec <- as.character(paths[, 1])
 colnames(prad.feat) <- paths.vec
 
@@ -82,14 +82,14 @@ ggplot(tab.path_prad, aes(x = DE_prop, y = -log10(P.Value ))) +
  theme_bw()
 dev.off()
 cor(tab.path_prad$ DE_prop, -log10(tab.path_prad$P.Value), use = "complete")
-# [1] 0.3397049
+# [1] 0.3421541
 
 cor(tab.path_prad$DE_prop, abs(tab.path_prad$logFC), use = "complete")
-# 0.3007257
+# 0.327146
 
 
 cor(tab.path_prad$DE_prop[tab.path_prad$DE_prop > 0 ], abs(tab.path_prad$logFC)[tab.path_prad$DE_prop > 0 ], use = "complete")
-# 0.3021887 
+# 0.3294506
 # comb.df <- left_join(tab.path, gos.mod, by = "category")
 # comb.df$min_p <- pmin(comb.df$over_represented_pvalue, comb.df$under_represented_pvalue)
 # plot(-log10(comb.df$min_p), -log10(comb.df$P.Value ))
@@ -140,7 +140,7 @@ svm_gleason <- svm(gleason ~ ., df_svm)
 pred.tcga <- predict(svm_gleason, prad.feat)
 table(prediction = pred.tcga , real = prad$gleason )
 
-sel_paths <- subset(tab.path, adj.P.Val < 0.05)
+sel_paths <- subset(tab.path_prad, adj.P.Val < 0.05)
 svm_gleason_filt <- svm(gleason ~ ., df_svm[, c("gleason", gsub(":", "_", rownames( sel_paths)))])
 pred.tcga_filt <- predict(svm_gleason_filt, prad.feat)
 table(prediction = pred.tcga_filt , real = prad$gleason )

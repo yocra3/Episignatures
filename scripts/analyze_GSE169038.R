@@ -22,10 +22,10 @@ se.tcga_genes <- loadHDF5SummarizedExperiment("results/GSE169038/", prefix = "ne
 
 
 genes <- read.table("./results/TCGA_gexp_combat_coding/input_genes.txt")
-path.map <- read.table("results/preprocess/go_kegg_final_gene_map.tsv", header = TRUE)
+path.map <- read.table("results/GTEx_coding/go_kegg_final_gene_map.tsv", header = TRUE)
 
-prad.feat <- read.table("results/GSE169038/comb_paths3_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
-paths <- read.table("results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_trained/pathways_names.txt", header = TRUE)
+prad.feat <- read.table("results/GSE169038/paths_filt2_full_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+paths <- read.table("results/GTEx_coding/paths_filt2_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
 paths.vec <- as.character(paths[, 1])
 colnames(prad.feat) <- paths.vec
 
@@ -77,24 +77,24 @@ save(fgseaRes_geo, file = "results/GSE169038/fgsea_results.Rdata")
 ## DE paths
 lm.paths <- lmFit(t(prad.feat.filt), mod) %>% eBayes()
 tab.paths_geo <- topTable(lm.paths, coef = 2, n = Inf)
-tab.paths_geo$category <- rownames(tab.paths)
+tab.paths_geo$category <- rownames(tab.paths_geo)
 # tab.paths$pathway <- rownames(tab.paths)
 
 # comb_fgsea <- left_join(fgseaRes, tab.paths, by = "pathway")
-
-png("figures/GSE169038_pval_gseavsPaths.png")
-
-ggplot(comb_fgsea, aes(x = -log10(P.Value ), y = -log10(pval ))) +
- geom_point() +
- scale_y_continuous(name = "-log10 P-value GSEA") +
- scale_x_continuous(name = "-log10 P-value Pathways") +
- theme_bw()
-dev.off()
+#
+# png("figures/GSE169038_pval_gseavsPaths.png")
+#
+# ggplot(comb_fgsea, aes(x = -log10(P.Value ), y = -log10(pval ))) +
+#  geom_point() +
+#  scale_y_continuous(name = "-log10 P-value GSEA") +
+#  scale_x_continuous(name = "-log10 P-value Pathways") +
+#  theme_bw()
+# dev.off()
 
 tab.paths_geo$DE_prop <- sapply( tab.paths_geo$category, function(cat) {
   genes <- subset(path.map, PathwayID  == cat )$Symbol
   mini_tab <- subset(tab.genes_geo, gene %in% genes)
-  mean(mini_tab$adj.P.Val < 0.05)
+  mean(mini_tab$adj.P.Val < 0.05, na.rm = TRUE)
 })
 
 png("figures/GSE169038_propDE_vs_pvalPaths.png")
@@ -115,13 +115,13 @@ dev.off()
 
 
 cor(tab.paths_geo$DE_prop, -log10(tab.paths_geo$P.Value))
-# 0.2668079
+# [1] 0.3230612
 
 cor(abs(tab.paths_geo$logFC), tab.paths_geo$DE_prop)
-# [1] 0.2324701
+# [1] 0.294971
 
 cor(tab.paths_geo$DE_prop[tab.paths_geo$DE_prop > 0 ], abs(tab.paths_geo$logFC)[tab.paths_geo$DE_prop > 0 ], use = "complete")
-# 0.229733
+# 0.2516048
 
 
 
@@ -168,12 +168,12 @@ png("figures/TCGAvsGEO_logFC.png")
 path.plot
 dev.off()
 
-png("figures/TCGAvsGEO_pval.png")
-ggplot(comb_paths, aes(x = -log10(P.Value.TCGA), y =  -log10(P.Value.GEO), col = Signif)) +
-  geom_point() +
-  theme_bw()
-dev.off()
-
+# png("figures/TCGAvsGEO_pval.png")
+# ggplot(comb_paths, aes(x = -log10(P.Value.TCGA), y =  -log10(P.Value.GEO), col = Signif)) +
+#   geom_point() +
+#   theme_bw()
+# dev.off()
+#
 
 ## Add GO names
 term <- read.table("data/GO_terms/term.txt", sep = "\t", quote = "", comment.char = "", as.is = TRUE)
@@ -210,9 +210,9 @@ summary(lm(logFC.TCGA ~ logFC.GEO, comb_paths ))
 summary(lm(logFC.TCGA ~ logFC.GEO, comb_paths, subset = Signif != "None" ))
 
 cor(comb_paths$logFC.TCGA, comb_paths$logFC.GEO)
-# [1] 0.4954506
+# [1] 0.4680735
 cor(comb_paths[comb_paths$Signif != "None", ]$logFC.TCGA, comb_paths[comb_paths$Signif != "None", ]$logFC.GEO)
-# [1] 0.6059908
+# [1] 0.6787246
 table(sign(comb_paths$logFC.TCGA) == sign(comb_paths$logFC.GEO), comb_paths$Signif)
 prop.table(table(sign(comb_paths$logFC.TCGA) == sign(comb_paths$logFC.GEO), comb_paths$Signif), margin = 2)
 prop.table(table(sign(comb_paths$logFC.TCGA) == sign(comb_paths$logFC.GEO), comb_paths$Signif != "None"), margin = 2)
@@ -268,7 +268,7 @@ prop.table(table(sign(comb.genes$log2FoldChange) == sign(comb.genes$logFC), comb
 
 
 ## GSEA
-load("results/GSE169038/fgsea_results.Rdata")
+load("results/TCGA_PRAD/fgsea_results.Rdata")
 comb.fgsea <- inner_join(fgseaRes_prad, fgseaRes_geo, by = "pathway", suffix = c(".TCGA", ".GEO"))   %>%
   mutate(Signif = ifelse(!is.na(padj.TCGA) & padj.TCGA  < 0.05, ifelse(padj.GEO < 0.05, "Both", "TCGA"),
                               ifelse(padj.GEO < 0.05, "GEO", "None")))
@@ -348,76 +348,76 @@ plot_grid(
   legend, ncol = 2, rel_widths = c(5, 1))
 dev.off()
 
-
-## Compare values between TCGA and GEO
-tcga.feat.all <- read.table("results/TCGA_gexp_coding_PRAD/comb_paths3_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
-colnames(tcga.feat.all) <- paths.vec
-
-comb.feat.all <- rbind(tcga.feat.all, prad.feat)
-pc.comb.all <- prcomp(comb.feat.all)
-
-## Subset data
-load("data/tcga_gexp_combat.Rdata")
-tcga.prad <- gexp_tcga_combat[as.character(genes$V1), gexp_tcga_combat$project_id == "TCGA-PRAD"]
-
-
-comb.all.df.pc <- data.frame(pc.comb.all$x, dataset = rep(c("TCGA", "GEO"), c(nrow(tcga.feat.all), nrow(prad.feat))),
-  Type = c(tcga.prad$sample_type, rep("Primary Tumor", nrow(prad.feat) ))) %>%
-  mutate(category = paste(dataset, Type))
-
-png("figures/TCGA_GEO_all_samples_PCA.png")
-ggplot(comb.all.df.pc, aes(x = PC1, y = PC2, color = category)) +
-  geom_point() +
-  theme_bw()
-dev.off()
-
-pc.tcga <- prcomp(tcga.feat)
-tcga.df.pc <- data.frame(pc.tcga$x,  Type = tcga.prad$sample_type)
-ggplot(tcga.df.pc, aes(x = PC1, y = PC2, color = Type)) +
-  geom_point() +
-  theme_bw()
-
-
-tcga.feat <- read.table("results/TCGA_gexp_coding_PRAD_tumor/comb_paths3_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
-colnames(tcga.feat) <- paths.vec
-
-tcga.prad <- tcga.prad[, !is.na(tcga.prad$paper_Reviewed_Gleason_category)]
-
-## define TCGA gleason
-tcga.prad$gleason <- ifelse(tcga.prad$paper_Reviewed_Gleason_category == ">=8", "High", "Low")
-
-comb.feat <- rbind(tcga.feat, prad.feat.filt)
-comb.feat$dataset <- rep(c("TCGA", "GEO"), c(nrow(tcga.feat), nrow(prad.feat.filt)))
-comb.feat$gleason <- c(tcga.prad$gleason, se.filt$gleason)
-
-
-png("figures/TCGAvsGEO_GO0000212_boxplot.png")
-ggplot(comb.feat, aes(x = gleason, y = `GO:0000212`, color = dataset)) +
-  geom_boxplot() +
-  theme_bw()
-dev.off()
-
-
-
-
-pc.comb <- prcomp(data.matrix(comb.feat[, 1:1337]))
-
-comb.df.pc <- data.frame(pc.comb$x, dataset = rep(c("TCGA", "GEO"), c(nrow(tcga.feat), nrow(prad.feat.filt))),
-      gleason = c(tcga.prad$gleason, se.filt$gleason))
-
-png("figures/TCGAGEO_comb_PC_dataset.png")
-ggplot(comb.df.pc, aes(x = PC1, y = PC2, color = dataset)) +
-  geom_point() +
-  theme_bw()
-dev.off()
 #
-png("figures/TCGAGEO_comb_PC_gleason.png")
-ggplot(comb.df.pc, aes(x = PC1, y = PC2, color = gleason)) +
-  geom_point() +
-  theme_bw()
-dev.off()
+# ## Compare values between TCGA and GEO
+# tcga.feat.all <- read.table("results/TCGA_gexp_coding_PRAD/comb_paths3_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+# colnames(tcga.feat.all) <- paths.vec
+#
+# comb.feat.all <- rbind(tcga.feat.all, prad.feat)
+# pc.comb.all <- prcomp(comb.feat.all)
+#
+# ## Subset data
+# load("data/tcga_gexp_combat.Rdata")
+# tcga.prad <- gexp_tcga_combat[as.character(genes$V1), gexp_tcga_combat$project_id == "TCGA-PRAD"]
+#
+#
+# comb.all.df.pc <- data.frame(pc.comb.all$x, dataset = rep(c("TCGA", "GEO"), c(nrow(tcga.feat.all), nrow(prad.feat))),
+#   Type = c(tcga.prad$sample_type, rep("Primary Tumor", nrow(prad.feat) ))) %>%
+#   mutate(category = paste(dataset, Type))
+#
+# png("figures/TCGA_GEO_all_samples_PCA.png")
+# ggplot(comb.all.df.pc, aes(x = PC1, y = PC2, color = category)) +
+#   geom_point() +
+#   theme_bw()
+# dev.off()
+#
+# pc.tcga <- prcomp(tcga.feat)
+# tcga.df.pc <- data.frame(pc.tcga$x,  Type = tcga.prad$sample_type)
+# ggplot(tcga.df.pc, aes(x = PC1, y = PC2, color = Type)) +
+#   geom_point() +
+#   theme_bw()
+#
+#
+# tcga.feat <- read.table("results/TCGA_gexp_coding_PRAD_tumor/comb_paths3_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+# colnames(tcga.feat) <- paths.vec
+#
+# tcga.prad <- tcga.prad[, !is.na(tcga.prad$paper_Reviewed_Gleason_category)]
+#
+# ## define TCGA gleason
+# tcga.prad$gleason <- ifelse(tcga.prad$paper_Reviewed_Gleason_category == ">=8", "High", "Low")
+#
+# comb.feat <- rbind(tcga.feat, prad.feat.filt)
+# comb.feat$dataset <- rep(c("TCGA", "GEO"), c(nrow(tcga.feat), nrow(prad.feat.filt)))
+# comb.feat$gleason <- c(tcga.prad$gleason, se.filt$gleason)
+#
+#
+# png("figures/TCGAvsGEO_GO0000212_boxplot.png")
+# ggplot(comb.feat, aes(x = gleason, y = `GO:0000212`, color = dataset)) +
+#   geom_boxplot() +
+#   theme_bw()
+# dev.off()
+#
 
-
+#
+#
+# pc.comb <- prcomp(data.matrix(comb.feat[, 1:1337]))
+#
+# comb.df.pc <- data.frame(pc.comb$x, dataset = rep(c("TCGA", "GEO"), c(nrow(tcga.feat), nrow(prad.feat.filt))),
+#       gleason = c(tcga.prad$gleason, se.filt$gleason))
+#
+# png("figures/TCGAGEO_comb_PC_dataset.png")
+# ggplot(comb.df.pc, aes(x = PC1, y = PC2, color = dataset)) +
+#   geom_point() +
+#   theme_bw()
+# dev.off()
+# #
+# png("figures/TCGAGEO_comb_PC_gleason.png")
+# ggplot(comb.df.pc, aes(x = PC1, y = PC2, color = gleason)) +
+#   geom_point() +
+#   theme_bw()
+# dev.off()
+#
+#
 
 ## Test SVM to classify gleason
 load("results/TCGA_PRAD/svm_model.Rdata")

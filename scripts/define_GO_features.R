@@ -30,18 +30,16 @@ tab <- left_join(mutate(all_gos, go_id = child_go_id), genes_pairs, by = "go_id"
   filter(!is.na(gene))
 
 tab$Symbol <- mapIds(org.Hs.eg.db, tab$gene , column= "ENSEMBL", keytype="SYMBOL")
-tab$GeneID <- mapIds(org.Hs.eg.db, tab$gene, column= "ENTREZID", keytype="SYMBOL")
 tab$PathwayID <- tab$go_id
 tab_filt <- subset(tab, Symbol %in% genes)
 
 
 ## Discard GOs with too few or too many genes
-gos_gene_tab <- gos_df %>%
+gos_gene_tab <- tab_filt %>%
   group_by(go_id) %>%
   summarize(n = n())
 
 bad_gos <- subset(gos_gene_tab,  n < 10 )$go_id
-gos_df_filt <- filter(gos_df, !go_id %in% bad_gos)
 
 # gos_vec <- unique(gos_df_filt$go_id)
 # names(gos_vec) <- gos_vec
@@ -62,14 +60,14 @@ gos_df_filt <- filter(gos_df, !go_id %in% bad_gos)
 # good_gos <- unique(gos_df_filt$go_id)[last_go_vec]
 
 # tab <- subset(gos_df_filt, go_id %in% good_gos)
-tab <- filter(gos_df, !go_id %in% bad_gos)
+tab_final <- filter(tab_filt, !go_id %in% bad_gos)
 
 
-write.table(tab[, c("GeneID", "PathwayID", "Symbol")], file = "results/preprocess/go_gene_map.tsv",
+write.table(tab[, c("PathwayID", "Symbol")], file = "results/preprocess/go_gene_map.tsv",
             quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
 
 tab2 <- read.table(file = "results/preprocess/kegg_filt_manual_gene_map.tsv", header = TRUE)
-tab_com <- rbind(tab[, c("GeneID", "PathwayID", "Symbol")], tab2)
+tab_com <- rbind(tab_final[, c("PathwayID", "Symbol")], tab2[, c("PathwayID", "Symbol")])
 
 write.table(tab_com, file = "results/preprocess/go_kegg_gene_map.tsv",
             quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")

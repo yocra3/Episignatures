@@ -14,7 +14,7 @@ library(matrixStats)
 ## Load functions
 readPathways <- function(model, sufix, path_name){
   lapply(sufix, function(i){
-    path <- paste0("results/TCGA_gexp_coding_noPRAD/", model, i, "/model_features/prune_low_magnitude_dense.tsv")
+    path <- paste0("results/GTEx_coding/", model, i, "/model_features/prune_low_magnitude_dense.tsv")
     tab <- read.table(path, header = TRUE)
     tab <- data.matrix(tab)
     colnames(tab) <- path_name
@@ -40,11 +40,11 @@ makeDFsum <- function(cors, mod_name){
 
 ## Load pathways annotations
 kegg.map <- read.table("results/preprocess/go_kegg_gene_map.tsv", header = TRUE)
-paths <- read.table("results/TCGA_gexp_coding_noPRAD/comb_paths_v3.8/model_trained/pathways_names.txt", header = TRUE)
+paths <- read.table("results/GTEx_coding/comb_paths_v3.6/model_trained/pathways_names.txt", header = TRUE)
 paths.vec <- as.character(paths[, 1])
-input_genes <- read.table("results/TCGA_gexp_coding_noPRAD/input_genes.txt", header = FALSE)
+input_genes <- read.table("results/GTEx_coding/input_genes.txt", header = FALSE)
 
-paths2 <- read.table("results/TCGA_gexp_coding_noPRAD/comb_paths2_v3.6/model_trained/pathways_names.txt", header = TRUE)
+paths2 <- read.table("results/GTEx_coding/paths_filt1_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
 paths.vec2 <- as.character(paths2[, 1])
 
 
@@ -62,7 +62,7 @@ names(path_genes) <- paths.vec
 gene_mat <- matrix(0, length(paths.vec), length(unique( kegg.map.com$Symbol)), dimnames = list(paths.vec, unique(kegg.map.com$Symbol)))
  for (i in paths.vec) gene_mat[i, path_genes[[i]]] <- 1
 gene_d <- dist(gene_mat, "binary")
-save(gene_d, file = "results/TCGA_gexp_coding_noPRAD/go_kegg_pathways_distance.Rdata")
+save(gene_d, file = "results/GTEx_coding/go_kegg_pathways_distance.Rdata")
 gene_dmat <- as.matrix(gene_d)
 
 # hsGO <- godata('org.Hs.eg.db', ont="BP")
@@ -70,7 +70,7 @@ gene_dmat <- as.matrix(gene_d)
 
 ## Load values of pathways without full training
 path_vals_full <- readPathways("comb_paths_v3.6", sufix = c("", letters[1:5]), path_name = paths.vec)
-path_vals_full2 <- readPathways("comb_paths2_v3.6", sufix = c("", letters[1:5]), path_name = paths.vec2)
+path_vals_full2 <- readPathways("paths_filt1_full_v3.6", sufix = c("", letters[1:5]), path_name = paths.vec2)
 path_vals_pre <- readPathways("comb_paths_v3.8", sufix = c("", letters[1:5]), path_name = paths.vec)
 
 ## Define replicability
@@ -263,14 +263,14 @@ diag(gene_dmat_filt) <- 1
 summary(rowMins(gene_dmat_filt))
 
 kegg.map.filt <- subset(kegg.map, PathwayID %in% sel_paths)
-write.table(kegg.map.filt, file = "results/preprocess/go_kegg_filt_gene_map.tsv",
+write.table(kegg.map.filt, file = "results/GTEx_coding/go_kegg_filt_gene_map.tsv",
             quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
 
 
 ##
 sel_paths2 <- subset(df.full2, minCor > 0.7)$path
 kegg.map.filt2 <- subset(kegg.map, PathwayID %in% sel_paths2)
-write.table(kegg.map.filt2, file = "results/preprocess/go_kegg_final_gene_map.tsv",
+write.table(kegg.map.filt2, file = "results/GTEx_coding/go_kegg_final_gene_map.tsv",
             quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
 
 
@@ -285,7 +285,17 @@ dist_df_filt <- tibble(path = rownames(gene_dmat_filt), min_dist = rowMins(gene_
 
 ggplot(dist_df_filt, aes(x = min_dist, y = minCor)) + geom_point()
 
+paths3 <- read.table("results/GTEx_coding/paths_filt2_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
+paths.vec3 <- as.character(paths3[, 1])
 
+path_vals_full3 <- readPathways("paths_filt2_full_v3.6", sufix = c("", letters[1:5]), path_name = paths.vec3)
+
+
+full.cors3 <- sapply(paths.vec3, pathwayCorr, path_list = path_vals_full3)
+colnames(full.cors3) <- paths.vec3
+df.full3 <- makeDFsum(full.cors3,"full") %>%
+  left_join(data.frame(kegg.N) %>% mutate(path = Var1) %>% dplyr::select(-Var1), by = "path") %>%
+  mutate(Database = ifelse(substring(path, 1, 2) == "GO", "GO", "KEGG"))
 
 
 

@@ -1,0 +1,338 @@
+---
+title: "Exploration of DNN training"
+author: "Carlos Ruiz"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    theme: united
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Introduction
+
+We have developed an approach to group the gene expression data into pathway expression values, using a deep neural network. Pathway expression values aim to represent the expression of its composing genes and to be representative of the state of the tissue. In this document, we will explore whether the pathway expression values fulfill these two requirements. In particular, we will explore how the training of the network modifies the weights to define the pathway expression values. For this, we will use the KEGG pathway hsa004300, which defines the taurine and hypotaurine metabolism:
+
+![hsa00430 pathway](../figures/hsa00430_pathway.png)
+
+Compound are shown in green diamonds while genes are represented by orange rectangles. For simplicity, only genes present in the model are shown. Rectangles with more than one gene represent reaction than can be catalyzed by more than one enzyme. We chose this pathway because is from KEGG, so we have the relationship between the genes, and is small so it easier to interpret.
+
+The results presented in this document are obtained after training the network using all samples from GTEx project v8 using a dataset of 7729 samples and 19,423 genes to encode 1322 pathways.
+
+
+```{r}
+library(tidyverse)
+library(cowplot)
+library(HDF5Array)
+library(SummarizedExperiment)
+library(pheatmap)
+library(org.Hs.eg.db)
+library(corrplot)
+library(qrnn)
+
+genes <- read.table("../results/GTEx_coding/input_genes.txt")$V1
+path.map <- read.table("../results/GTEx_coding/go_kegg_final_gene_map.tsv", header = TRUE)
+
+gtex.feat <- read.table("../results/GTEx_coding/paths_filt2_full_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+paths <- read.table("../results/GTEx_coding/paths_filt2_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
+paths.vec <- as.character(paths[, 1])
+colnames(gtex.feat) <- paths.vec
+
+weights <- h5read("../results/GTEx_coding/paths_filt2_full_v3.6/model_trained/model_weights.h5","weights_paths")
+rownames(weights) <- paths.vec
+colnames(weights) <- genes
+
+gtex.vst <- loadHDF5SummarizedExperiment("../results/GTEx/", prefix = "vst_all_")
+
+weights_list <- lapply(letters[1:5], function(submod){
+  w <- h5read(paste0("../results/GTEx_coding/paths_filt2_full_v3.6", submod, "/model_trained/model_weights.h5"),"weights_paths")
+  rownames(w) <- paths.vec
+  colnames(w) <- genes
+  w
+})
+
+all_gtex <- h5read("../results/GTEx/all_reshaped_standardized.h5","methy")
+rownames(all_gtex) <- genes
+```
+
+
+
+# DNN training
+
+## Introduction
+
+The goal of our approach is to get pathway expression values from gene expression values that should be: (1) robust (not affected by the initialization parameters of the network), (2) representative of the genes (should contain as much information as possible from the incoming genes) and (3) representative of the tissue state. To this end, we design a three-step training approach to achieves each of the goals:
+
+1. For each pathway, train an autoencoder containing only the genes of the pathway.
+1. Take weights from step 1, and define an autoencoder with all genes and all pathways. Frozen weights from genes to pathways and train.
+1. Unfrozen all weights and train.
+
+Each of the steps is aimed to accomplish one of the previous requirements. Thus, step 1 ensures that the pathway expression values are representatives of the genes they are composed of. Step 2 increases the robustness of the pathway expression values. We expect that results from step 1 will be robust, as we will have much more samples than parameters to train. Thus, in step 2 we will let the network modify the weights from pathways to reconstructed gene values after fixing pathways expression values, expecting the weights will end in a similar point. Finally, step 3 increases the representative of the pathway expression values of the tissue state, as we will let the network fine-tune the pathway values to optimize the reconstruction of original gene values.
+
+In the next sections, we will explore how the network defines the weights of the hsa004300 pathway in steps 1 and 3 of the training. As step 2 does not modify the weights defining the pathway expression values, we will not consider it. We train 10 models up to step 1 and 6 other models including the three steps.
+
+
+## Step 1 - pathway autoencoder
+
+In step 1, we aim to define a pathway expression value that maximizes the variance of the genes the pathway is composed of. In the next figure, we show the weights obtained for the 10 models from step 1 (numbers) and the 6 models from full training (letters). "main" is the model that we use for the paper results:
+
+```{r}
+path_w <- weights["path:hsa00430", subset(path.map, PathwayID == "path:hsa00430")$Symbol]
+path_w_mat <- sapply(weights_list, function(m) m["path:hsa00430", subset(path.map, PathwayID == "path:hsa00430")$Symbol])
+path_w_mat <- cbind(path_w, path_w_mat )
+colnames(path_w_mat) <- c("main", letters[1:5])
+
+ini_w <-  h5read("../results/GTEx_coding/paths_filt2_full_v3.6/hsa00430_ini_weights.h5","weights_paths")
+
+path_w_comb <- cbind(path_w_mat, t(ini_w))
+colnames(path_w_comb) <- c(colnames(path_w_mat), 1:10)
+rownames(path_w_comb)  <- mapIds(org.Hs.eg.db, rownames(path_w_comb)  , keytype= "ENSEMBL", column="SYMBOL")
+
+myBreaks <- c(seq(-max(abs(path_w_comb)), 0, length.out=ceiling(100/2) + 1),
+              seq(max(abs(path_w_comb))/100, max(abs(path_w_comb)), length.out=floor(100/2)))
+
+
+pheatmap(path_w_comb, breaks = myBreaks)
+```
+
+We observe that the trainings are grouped in two clusters, depending in the sign of the weights. As in this context the sign of the pathway expression values is not meaningful, we changed the sign for this representation to models b, d, 2, 6 and 8, so we can compare their magnitude with the rest of the models.
+
+
+```{r}
+path_w_comb[, c(3, 5, 8, 12, 14)] <- -path_w_comb[, c(3, 5, 8, 12, 14)]
+
+myBreaks <- c(seq(-max(abs(path_w_comb)), 0, length.out=ceiling(100/2) + 1),
+              seq(max(abs(path_w_comb))/100, max(abs(path_w_comb)), length.out=floor(100/2)))
+
+pheatmap(path_w_comb, breaks = myBreaks)
+```
+
+Models trained up to step 1 converges to similar weights, thus the pathway expression values will be almost identical. More differences are observed for models trained up to step 3 that will be considered later. In order to have a better view of weigths from step one, we will repeat the plot including only models 1 to 10:
+
+
+```{r}
+myBreaks <- c(seq(-max(abs(path_w_comb[, as.character(1:10)])), 0, length.out=ceiling(100/2) + 1),
+              seq(max(abs(path_w_comb[, as.character(1:10)]))/100, max(abs(path_w_comb[, as.character(1:10)])), length.out=floor(100/2)))
+
+pheatmap(path_w_comb[, as.character(1:10)], breaks = myBreaks)
+```
+
+In step 1, genes of the FMO family (FMO1, FMO2, FMO3 and FMO4) and GGT5 have a strong positive weight while GAD1 and GAD2 have a strong negative weight. Next, we will check how these genes are related:
+
+
+```{r, fig.height = 10, fig.width = 10}
+path_df <- data.frame(ensembl = names(path_w), weights = path_w)
+path_df$Symbol <- mapIds(org.Hs.eg.db, path_df$ensembl , keytype= "ENSEMBL", column="SYMBOL")
+
+gene_cors <- cor(t(data.matrix(assay(gtex.vst[path_df$ensembl, ]))))
+colnames(gene_cors) <- rownames(gene_cors) <- path_df$Symbol
+corrplot(gene_cors, method = "number", order = "hclust")
+```
+
+Genes with positive weights are positively correlated among them (correlation > 0.3), while they are negatively correlated with GAD1 and GAD2. At the same time, GAD1 and GAD2 are highly correlated among them. Weights of other genes are defined based on the correlated with these two clusters. For instance, ADO and GGT7 are positively correlated with GAD1 and GAD2 and have negative weights. CSAD is positively correlated with FMO genes, and has a positive weights.
+
+We observe that the weights are reflecting the correlations between the genes. Therefore, we checked whether the pathway expression values was correlated to the principal components of the genes. To this end, we selected the weights of model 1, as all the models have very similar weights.
+
+
+```{r}
+pc_path <- prcomp(t(data.matrix(assay(gtex.vst[path_df$ensembl, ]))), scale = TRUE)
+pre_path <- t(all_gtex[path_df$ensembl, ]) %*% path_w_comb[, "1"]
+
+data.frame(PC1 = pc_path$x[, 1], Pathway = pre_path) %>%
+  ggplot(aes(x = Pathway, y = PC1)) + geom_point() +
+  theme_bw()
+```
+
+The pathway expression values and the PC1 of the genes of the pathway are almost identical (r = `r sprintf("%.3f", cor(pc_path$x[, 1], pre_path))`). Therefore, the step 1 of the training is obtaining the first PC of the data, maximizing the variability it represents from the genes of the pathway.
+
+## Step 3 - pathway tuning
+
+As we saw in the previous section, full trained models had different pathway weights than those obtained after step 1. Despite there was higher variability in the weights obtained from the different initializations, they were still quite similar. Thus, we will focus the conclussions on the weights obtained in the main model.
+
+First, we will compare the pathway expression values after step 1 and after full training:
+
+```{r}
+df_path <- data.frame(path_pre = elu(pre_path), path_full =  gtex.feat[, "path:hsa00430"],
+                      pc = pc_path$x[, 1], tissue = gtex.vst$smts)
+
+df_path %>%
+  mutate(Tissue = ifelse(!tissue %in% c("Liver", "Brain"), "Other tissue", tissue)) %>%
+    ggplot(aes(x = path_pre, y = path_full, col = Tissue)) +
+    geom_point() +
+    theme_bw() +
+    xlab("Pathway values - step 1") +
+    ylab("Pathway values - step 3") +
+    scale_color_manual(values = c("#fcfc7e", "#d4ddb2", "grey"))
+
+```
+
+Pathway expression values after full training are very correlated with pathway expression values after step 1 (r = `r sprintf("%.3f", cor(gtex.feat[, "path:hsa00430"], elu(pre_path)))`). Nonetheless, we observe that for two tissues exhibit higher differences than the rest of the tissues. On one hand, brain samples, which have the lowest pathway expression values for this pathway, have a higher increase in pathway expression expression values than other samples. On the other hand, liver samples, which have the highest pathway expression values for this pathway, have a decrease in pathway expression values than other samples.
+
+### Brain
+
+Next, we explored which genes are responsible for the behaviour of these two tissues. Starting by the weights obtained after step 1, we checked which weights we should take from step 3 to reproduce these differences in brain and liver tissues. In brain, we observed that we can reproduce these differences just by changing three genes (GAD1, GAD2 and ADO):
+
+```{r}
+w_mix <- path_w_comb[, 7]
+w_mix[c("GAD1", "GAD2", "ADO")] <- path_w_comb[c("GAD1", "GAD2", "ADO"), 1]
+path_mix <- t(all_gtex[path_df$ensembl, ]) %*% w_mix
+
+p1_brain_pre <- df_path %>%
+  mutate(Tissue = ifelse(!tissue %in% c("Liver", "Brain"), "Other tissue", tissue),
+          mix = elu(path_mix)) %>%
+      ggplot(aes(x = path_pre, y = mix, col = Tissue)) +
+      geom_point() +
+      theme_bw() +
+      xlab("Pathway values - step 1") +
+      ylab("Pathway values modified brain") +
+      scale_color_manual(values = c("#fcfc7e", "#d4ddb2", "grey")) +
+      ggtitle("Step 1 comparison") +
+      theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "none")
+
+p1_brain_post <- df_path %>%
+  mutate(Tissue = ifelse(!tissue %in% c("Liver", "Brain"), "Other tissue", tissue),
+          mix = elu(path_mix)) %>%
+      ggplot(aes(x = mix, y = path_full, col = Tissue)) +
+      geom_point() +
+      theme_bw() +
+      xlab("Pathway values modified brain") +
+      ylab("Pathway values - step 3") +
+      scale_color_manual(values = c("#fcfc7e", "#d4ddb2", "grey")) +
+      ggtitle("Step 3 comparison") +
+      theme(plot.title = element_text(hjust = 0.5))
+
+plot_grid(p1_brain_pre, p1_brain_post, ncol = 2, rel_widths = c(2, 3))
+```
+
+Pathway values modified brain represent the pathway expression values computed using the weights from step 1 (model 1), but using the weights of step 3 (model main) for genes GAD1, GAD2 and ADO. In the left figure, we observe how these modified pathway values recover the difference in brain samples between pathway expression values of steps 1 and steps 3, but not the difference between liver samples. In the right figure, we observe that the modified pathway have similar values for brain samples than for step 3 pathway values, but they differ in the pathway expression values for liver.
+
+In summary, the network has changed the weights for genes GAD1, GAD2 and ADO in order to improve the representativity of this pathway for brain samples. Next, we will checked how these weights have changed:
+
+```{r}
+path_w_comb[, c("main", "1")] %>%
+  data.frame() %>%
+  mutate(Gene = rownames(path_w_comb)) %>%
+  filter(Gene %in% c("GAD1", "GAD2", "ADO")) %>%
+  gather(Model, Weight, 1:2) %>%
+  mutate(Model = recode(Model, main = "Step 3 - main", X1 = "Step 1 - 1")) %>%
+    ggplot(aes(x = Model, y = Weight, group = Gene, col = Gene)) +
+    geom_point() +
+    geom_line() +
+    theme_bw()
+```
+
+These three genes were had the highest negative weights. In the three cases, the training is reducing the magnitude of these weights, thus reducing their importance in the final pathway expression value computation.
+
+We explored the expression of these genes in the different tissues:
+
+
+```{r}
+brain_path <- subset(path_df,Symbol  %in% c("GAD1", "GAD2", "ADO"))
+brain_mat <- t(data.matrix(assay(gtex.vst[brain_path$ensembl, ] )))
+colnames(brain_mat) <- brain_path$Symbol
+
+data.frame(brain_mat, Tissue = gtex.vst$smts) %>%
+  filter(!Tissue %in% c("", "Fallopian Tube", "Bladder", "Cervix Uteri", "Kidney")) %>%
+  mutate(Group = ifelse(!Tissue %in% c("Liver", "Brain"), "Other tissue", Tissue)) %>%
+  gather(Gene, Expression, 1:3) %>%
+  ggplot(aes(x = Tissue, y = Expression, color = Group)) +
+  geom_boxplot() +
+  scale_color_manual(values = c("#dede07", "#d4ddb2", "grey")) +
+  facet_grid(Gene ~ ., scales = "free_y") +
+  theme_bw()
+
+```
+
+The three genes were highly expressed in brain. Finally, we will take a look to the function of the genes. GAD1 and GAD2 are two glutamate decarboxylases that, despite are mapped to the taurine metabolism in KEGG, there are no good references supporting this role in this pathways. Thus, the model has penalized both and specially GAD2, which passed from being the gene with the highest negative weight to a weight of 0 in the final model. ADO (cysteamine (2-aminoethanethiol) dioxygenase), which plays a role in taurine metabolism, had the smallest reduction in weight of the three genes.
+
+
+### Liver
+
+We repeated the same approach for liver. In these case, we needed to modify four genes (FMO1, FMO2, CDO1 and BAAT):
+
+```{r}
+w_mix <- path_w_comb[, 7]
+w_mix[c("FMO1", "CDO1",  "FMO2",  "BAAT")] <- path_w_comb[c("FMO1", "CDO1",  "FMO2",  "BAAT"), 1]
+path_mix <- t(all_gtex[path_df$ensembl, ]) %*% w_mix
+
+p1_liver_pre <- df_path %>%
+  mutate(Tissue = ifelse(!tissue %in% c("Liver", "Brain"), "Other tissue", tissue),
+          mix = elu(path_mix)) %>%
+      ggplot(aes(x = path_pre, y = mix, col = Tissue)) +
+      geom_point() +
+      theme_bw() +
+      xlab("Pathway values - step 1") +
+      ylab("Pathway values modified liver") +
+      scale_color_manual(values = c("#fcfc7e", "#d4ddb2", "grey")) +
+      ggtitle("Step 1 comparison") +
+      theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "none")
+
+p1_liver_post <- df_path %>%
+  mutate(Tissue = ifelse(!tissue %in% c("Liver", "Brain"), "Other tissue", tissue),
+          mix = elu(path_mix)) %>%
+      ggplot(aes(x = mix, y = path_full, col = Tissue)) +
+      geom_point() +
+      theme_bw() +
+      xlab("Pathway values modified liver") +
+      ylab("Pathway values - step 3") +
+      scale_color_manual(values = c("#fcfc7e", "#d4ddb2", "grey")) +
+      ggtitle("Step 3 comparison") +
+      theme(plot.title = element_text(hjust = 0.5))
+
+plot_grid(p1_liver_pre, p1_liver_post, ncol = 2, rel_widths = c(2, 3))
+```
+
+Pathway values modified liver represent the pathway expression values computed using the weights from step 1 (model 1), but using the weights of step 3 (model main) for genes FMO1, FMO2, CDO1 and BAAT. In the left figure, we observe how these modified pathway values recover the difference in liver samples between pathway expression values of steps 1 and steps 3, but not the difference between brain samples. In the right figure, we observe that the modified pathway have similar values for liver samples than for step 3 pathway values, but they differ in the pathway expression values for brain.
+
+In summary, the network has changed the weights for genes FMO1, FMO2, CDO1 and BAAT in order to improve the representativity of this pathway for brain samples. Next, we will checked how these weights have changed:
+
+```{r}
+path_w_comb[, c("main", "1")] %>%
+  data.frame() %>%
+  mutate(Gene = rownames(path_w_comb)) %>%
+  filter(Gene %in% c("FMO1", "CDO1", "FMO2", "BAAT")) %>%
+  gather(Model, Weight, 1:2) %>%
+  mutate(Model = recode(Model, main = "Step 3 - main", X1 = "Step 1 - 1")) %>%
+    ggplot(aes(x = Model, y = Weight, group = Gene, col = Gene)) +
+    geom_point() +
+    geom_line() +
+    theme_bw()
+```
+
+FMO1 and FMO2 had some of the highest positive weights in the step 1 model and training have increased these weights even more. On the other hand, BAAT and CDO1 had values close to 0 and the training turned them to negative weights. All in all, the training have increased the importance of these four genes in training, either reinforcing positive weights, or turning weights close to 0 negative.
+
+We explored the expression of these genes in the different tissues:
+
+
+```{r}
+liver_path <- subset(path_df,Symbol  %in% c("FMO1", "CDO1", "FMO2", "BAAT"))
+liver_mat <- t(data.matrix(assay(gtex.vst[liver_path$ensembl, ] )))
+colnames(liver_mat) <- liver_path$Symbol
+
+data.frame(liver_mat, Tissue = gtex.vst$smts) %>%
+  filter(!Tissue %in% c("", "Fallopian Tube", "Bladder", "Cervix Uteri", "Kidney")) %>%
+  mutate(Group = ifelse(!Tissue %in% c("Liver", "Brain"), "Other tissue", Tissue)) %>%
+  gather(Gene, Expression, 1:4) %>%
+  ggplot(aes(x = Tissue, y = Expression, color = Group)) +
+  geom_boxplot() +
+  scale_color_manual(values = c("#dede07", "#d4ddb2", "grey")) +
+  facet_grid(Gene ~ ., scales = "free_y") +
+  theme_bw()
+
+```
+
+FMO1 and FMO2 are widely expressed and do not have a particular high expression in liver. These genes encode for flavin-containing monooxygenases, enzymes that have been involved in the production of taurine from hypotaurine (PMID: 32156684). FMOs have different forms which are included in the model, but FMO1, and to a less extent FMO2 and FMO4, are thought to be responsible of most of the taurine production. Therefore, the model is increasing the importance of the two FMO more associated with taurine production.
+
+CDO1 and BAAT are two genes that are highly expressed in liver. CDO1 (Cysteine dioxygenase type 1) catalyzes the coversion of L-cysteine into cysteine sulfinic acid, a precursor of taurine. BAAT (Bile Acid-CoA:Amino Acid N-Acyltransferase) transfers an acyl-CoA to taurine, to produce bile acids. Both genes are involved in tuarine metabolism.
+
+All in all, the training has modified the weights of four genes with a significant influence on the values of liver samples. In this case, the four genes are involved in taurine metabolism and the model has increased their importance in the pathway computation. Of note, is the increased of weight of FMO1, an key enzyme in taurine production which the model gave the highest weight.
+
+# Conclusions
+
+Our exploration of the training of hsa00430 pathway have shown that the training is generating pathway expression values with the features that we required. In step 1, the model is retrieving the maximum variability of the pathway genes, as shown with the identity with the first PC1 of the genes. Step 2 ensures that the model will converge to similar final weights, as shown by the similarity between the weights obtained in the 6 independent trainings. Finally, step 3 tunes the pathway weights to produce values that are more representative of the samples. In this case, we observed how the models tuned the weights of 7 genes to improve the representation of liver and brain samples. These changes led to increase the importance of genes involved in taurine metabolism (FMO1, CDO1 or BAAT), and to decrease the importance of genes less related to the pathway (GAD1 and GAD2).

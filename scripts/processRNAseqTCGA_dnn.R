@@ -119,3 +119,14 @@ project[vst_train$sample_type == "Solid Tissue Normal"] <- "Normal"
 
 write.table(project, file = paste0(gexp_fold_cod2, "individuals_labels.txt"), quote = FALSE,
             row.names = FALSE, col.names = FALSE)
+
+
+## Create object with only control samples
+vst_control <- vst_coding[, vst_coding$sample_type == "Solid Tissue Normal"]
+project <- as.character(vst_control$project_id)
+project[project %in% names(table(project)[table(project) < 5])] <- "Other"
+
+
+saveHDF5SummarizedExperiment(vst_control, "results/TCGA_gexp_coding_control/", prefix = "vsd_norm_control")
+write.table(project, file = "results/TCGA_gexp_coding_control/individuals_labels.txt", quote = FALSE,
+            row.names = FALSE, col.names = FALSE)

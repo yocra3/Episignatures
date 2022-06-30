@@ -30,6 +30,9 @@ rownames(gtex) <- gsub("\\.[0-9]*", "", rownames(gtex) , perl = TRUE)
 gtex <- vst(gtex[genes, ], blind=FALSE)
 saveHDF5SummarizedExperiment(gtex, "results/GTEx/", prefix = "vst_all_")
 
+tissue <- gtex$smtsd 
+write.table(tissue, file = "results/GTEx/individuals_labels.txt", quote = FALSE,
+            row.names = FALSE, col.names = FALSE)
 
 
 ## Prepare prostate data

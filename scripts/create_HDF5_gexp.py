@@ -165,6 +165,7 @@ meth_matrix = f['assay001']
 x_prad_tum = meth_matrix[...]
 f.close()
 
+
 means_prad_tum = np.mean(x_prad_tum, axis = 0)
 stds_prad_tum = np.std(x_prad_tum, axis = 0)
 x_prad_tum_std = (x_prad_tum - means_prad_tum)/stds_prad_tum
@@ -174,6 +175,41 @@ f = h5py.File('results/TCGA_gexp_coding_noPRAD/prad_tumor_assay_reshaped_standar
 dataset_input = f.create_dataset('methy', (x_prad_tum_std.shape[0], x_prad_tum_std.shape[1]))
 dataset_input[...] = x_prad_tum_std
 f.close()
+
+
+
+
+# Adapt Control
+f = h5py.File('results/TCGA_gexp_coding_control/vsd_norm_controlassays.h5', 'r')
+meth_matrix = f['assay001']
+x_train = meth_matrix[...]
+f.close()
+
+with open('results/TCGA_gexp_coding_control/individuals_labels.txt','r') as file:
+    project = file.read()
+
+project = project.split('\n')[0:-1]
+
+
+## Convert labels to integers labels
+# integer encode
+label_encoder = LabelEncoder()
+label_int = label_encoder.fit_transform(project)
+
+
+means = np.mean(x_train, axis = 0)
+stds = np.std(x_train, axis = 0)
+x_train_std = (x_train - means)/stds
+
+# Save reshaped training data
+f = h5py.File('results/TCGA_gexp_coding_control/train_assay_reshaped_standardized.h5', 'w')
+dataset_input = f.create_dataset('methy', (x_train_std.shape[0], x_train_std.shape[1]))
+dataset_label = f.create_dataset('label', (len(label_int),))
+dataset_input[...] = x_train_std
+dataset_label[...] = label_int
+dataset_label.attrs['labels'] = label_encoder.classes_.tolist()
+f.close()
+
 
 ### Change GSE169038
 f = h5py.File('results/GSE169038/network_genesassays.h5', 'r')
@@ -199,6 +235,17 @@ meth_matrix = f['assay001']
 gtex = meth_matrix[...]
 f.close()
 
+
+with open('results/GTEx/individuals_labels.txt','r') as file:
+    tissue = file.read()
+tissue = tissue.split('\n')[0:-1]
+
+## Convert labels to integers labels
+# integer encode
+label_encoder = LabelEncoder()
+label_int = label_encoder.fit_transform(tissue)
+
+
 means_gtex = np.mean(gtex, axis = 0)
 stds_gtex = np.std(gtex, axis = 0)
 x_gtex = (gtex - means_gtex)/stds_gtex
@@ -207,6 +254,9 @@ x_gtex = (gtex - means_gtex)/stds_gtex
 f = h5py.File('results/GTEx/all_reshaped_standardized.h5', 'w')
 dataset_input = f.create_dataset('methy', (x_gtex.shape[0], x_gtex.shape[1]))
 dataset_input[...] = x_gtex
+dataset_label = f.create_dataset('label', (len(label_int),))
+dataset_label[...] = label_int
+dataset_label.attrs['labels'] = label_encoder.classes_.tolist()
 f.close()
 
 
