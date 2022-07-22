@@ -4,33 +4,43 @@
 #'#################################################################################
 #'#################################################################################
 
-
-## Load libraries
+# Load libraries
 library(tidyverse)
 library(cowplot)
 library(HDF5Array)
 library(SummarizedExperiment)
 library(pheatmap)
 library(org.Hs.eg.db)
-library(corrplot)
+library(ggcorrplot)
 library(qrnn)
 
-genes <- read.table("./results/GTEx_coding/input_genes.txt")$V1
-path.map <- read.table("results/GTEx_coding/go_kegg_final_gene_map.tsv", header = TRUE)
+genes <- read.table("results/GTEx_coding/input_genes.txt")$V1
+path.map <- read.table("results/GTEx_coding/go_kegg_filt2_gene_map.tsv", header = TRUE)
 
-gtex.feat <- read.table("results/GTEx_coding/paths_filt2_full_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
-paths <- read.table("results/GTEx_coding/paths_filt2_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
+gtex.feat <- read.table("results/GTEx_coding/paths_filt2_full_v3.11/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+paths <- read.table("results/GTEx_coding/paths_filt2_full_v3.11/model_trained/pathways_names.txt", header = TRUE)
 paths.vec <- as.character(paths[, 1])
 colnames(gtex.feat) <- paths.vec
 
-weights <- h5read("results/GTEx_coding/paths_filt2_full_v3.6/model_trained/model_weights.h5","weights_paths")
+weights <- h5read("results/GTEx_coding/paths_filt2_full_v3.11/model_trained/model_weights.h5","weights_paths")
 rownames(weights) <- paths.vec
 colnames(weights) <- genes
+
+weights_pre <- h5read("results/GTEx_coding/paths_filt2_pre_v3.8/model_trained/model_weights.h5","weights_paths")
+rownames(weights_pre) <- paths.vec
+colnames(weights_pre) <- genes
 
 gtex.vst <- loadHDF5SummarizedExperiment("results/GTEx/", prefix = "vst_all_")
 
 weights_list <- lapply(letters[1:5], function(submod){
-  w <- h5read(paste0("results/GTEx_coding/paths_filt2_full_v3.6", submod, "/model_trained/model_weights.h5"),"weights_paths")
+  w <- h5read(paste0("results/GTEx_coding/paths_filt2_full_v3.11", submod, "/model_trained/model_weights.h5"),"weights_paths")
+  rownames(w) <- paths.vec
+  colnames(w) <- genes
+  w
+})
+
+weights_pre_list <- lapply(letters[1:5], function(submod){
+  w <- h5read(paste0("results/GTEx_coding/paths_filt2_pre_v3.8", submod, "/model_trained/model_weights.h5"),"weights_paths")
   rownames(w) <- paths.vec
   colnames(w) <- genes
   w
@@ -39,188 +49,113 @@ weights_list <- lapply(letters[1:5], function(submod){
 all_gtex <- h5read("results/GTEx/all_reshaped_standardized.h5","methy")
 rownames(all_gtex) <- genes
 
-## Select hsa00430 weights
+## Get matrices of weights
 path_w <- weights["path:hsa00430", subset(path.map, PathwayID == "path:hsa00430")$Symbol]
-
-path_df <- data.frame(ensembl = names(path_w), weights = path_w)
-path_cor <- cor(t(data.matrix(assay(gtex.vst[path_df$ensembl, ]))), gtex.feat[, "path:hsa00430"])
-
-path_df$cor <- path_cor
-path_df$Symbol <- mapIds(org.Hs.eg.db, path_df$ensembl , keytype= "ENSEMBL", column="SYMBOL")
-
-
-gene_cors <- cor(t(data.matrix(assay(gtex.vst[path_df$ensembl, ]))))
-colnames(gene_cors) <- rownames(gene_cors) <- path_df$Symbol
-corrplot(gene_cors, method = "number", order = "hclust")
-
-pc_path <- prcomp(t(data.matrix(assay(gtex.vst[path_df$ensembl, ]))), scale = TRUE)
-
-plot(pc_path$x[, 1], gtex.feat[, "path:hsa00430"] )
-
-
-### Get weights of replicates
 path_w_mat <- sapply(weights_list, function(m) m["path:hsa00430", subset(path.map, PathwayID == "path:hsa00430")$Symbol])
 path_w_mat <- cbind(path_w, path_w_mat )
 colnames(path_w_mat) <- c("main", letters[1:5])
 
-ini_w <-  h5read("results/GTEx_coding/paths_filt2_full_v3.6/hsa00430_ini_weights.h5","weights_paths")
+path_w_pre <- weights_pre["path:hsa00430", subset(path.map, PathwayID == "path:hsa00430")$Symbol]
+path_w_pre_mat <- sapply(weights_pre_list, function(m) m["path:hsa00430", subset(path.map, PathwayID == "path:hsa00430")$Symbol])
+path_w_pre_mat <- cbind(path_w_pre, path_w_pre_mat )
+colnames(path_w_pre_mat) <- 1:6
 
-path_w_comb <- cbind(path_w_mat, t(ini_w))
-colnames(path_w_comb) <- c(colnames(path_w_mat), 1:10)
-path_w_comb[, c(3, 5, 8, 12, 14)] <- -path_w_comb[, c(3, 5, 8, 12, 14)]
-rownames(path_w_comb) <- path_df$Symbol
-
-heatmap(path_w_comb, scale = "column", col = cm.colors(256))
-
-
-corrplot(cor(t(path_w_comb)), method = "number", order = "hclust")
+path_w_comb <- cbind(path_w_mat, path_w_pre_mat)
+rownames(path_w_comb)  <- mapIds(org.Hs.eg.db, rownames(path_w_comb)  , keytype= "ENSEMBL", column="SYMBOL")
+path_w_comb[, c(2, 4, 5)] <- -path_w_comb[,  c(2, 4, 5)]
 
 
-path_w_df <- t(path_w_comb)/colSums(abs(path_w_comb))
-path_w_df <- data.frame(path_w_df) %>%
-  mutate(dataset = colnames(path_w_comb)) %>%
-  gather(Gene, value, 1:16) %>%
-  mutate(training = ifelse(dataset %in% 1:10, "Pre", "Full"),
-        training = factor(training, levels = c("Pre", "Full")))
+png("figures/hsa00430_weights_heatmap.png")
+myBreaks <- c(seq(-max(abs(path_w_comb)), 0, length.out=ceiling(100/2) + 1),
+              seq(max(abs(path_w_comb))/100, max(abs(path_w_comb)), length.out=floor(100/2)))
+pheatmap(path_w_comb, breaks = myBreaks)
+dev.off()
 
-ggplot(path_w_df, aes(x = Gene, color = training, y = value)) +
-  geom_boxplot() +
-  theme_bw()
+path_df <- data.frame(ensembl = names(path_w), weights = path_w)
+path_df$Symbol <- mapIds(org.Hs.eg.db, path_df$ensembl , keytype= "ENSEMBL", column="SYMBOL")
 
-pre_path <- t(all_gtex[path_df$ensembl, ]) %*% path_w_comb[, 8]
-plot(elu(pre_path),  gtex.feat[, "path:hsa00430"])
-plot(pre_path,  pc_path$x[, 1])
+gene_cors <- cor(t(data.matrix(assay(gtex.vst[path_df$ensembl, ]))))
+colnames(gene_cors) <- rownames(gene_cors) <- path_df$Symbol
 
-cor(elu(pre_path),  gtex.feat[, "path:hsa00430"])
-cor(pre_path,  pc_path$x[, 1])
+png("figures/hsa00430_genes_correlation.png")
+ggcorrplot(gene_cors, method = "circle", hc.order = TRUE)
+dev.off()
 
-path_genes <- data.frame(t(assay(gtex.vst[path_df$ensembl, ])))
-path_genes$tissue <- gtex.vst$smts
+pc_path <- prcomp(t(data.matrix(assay(gtex.vst[path_df$ensembl, ]))), scale = TRUE)
+pre_path <- t(all_gtex[path_df$ensembl, ]) %*% path_w_comb[, "1"]
 
-path_df$tissue_var <- sapply(path_df$ensembl, function(gene) {
-   summary(lm(formula(paste(gene,  "~ tissue")), path_genes))$adj.r.squared
- })
-
-
-
+pc_plot <- data.frame(PC1 = pc_path$x[, 1], Pathway = pre_path) %>%
+  ggplot(aes(x = Pathway, y = PC1)) + geom_point() +
+  theme_bw() +
+  xlab("Initial gene set activity score") +
+  ylab("PC1 of gene set genes")
+png("figures/hsa00430_step1_pca.png", height = 300, width = 300)
+pc_plot
+dev.off()
 
 
 
 ## Plot pathway values
 df_path <- data.frame(path_pre = elu(pre_path), path_full =  gtex.feat[, "path:hsa00430"],
                       pc = pc_path$x[, 1], tissue = gtex.vst$smts)
-df_path_filt <- subset(df_path, !tissue %in% c("", "Fallopian Tube", "Bladder", "Cervix Uteri", "Kidney"))
-df_path_filt %>%
-  ggplot(aes(x = tissue, y = path_pre)) +
-  geom_boxplot() +
-  theme_bw()
 
-
-
-#
-df_path_filt %>%
-  ggplot(aes(x = tissue, y = path_full)) +
-  geom_boxplot() +
-  theme_bw()
-
-#
-df_path_filt %>%
-  ggplot(aes(x = tissue, y = pc)) +
-  geom_boxplot() +
-  theme_bw()
-
-df_path_filt %>%
-  mutate(col = ifelse(!tissue %in% c("Liver", "Brain", "Bone Marrow", "Colon", "Prostate", "Stomach"), "Other tissue", tissue)) %>%
-    ggplot(aes(x = path_pre, y = path_full, col = col)) +
+plot_train <- df_path %>%
+  mutate(Tissue = ifelse(!tissue %in% c("Brain"), "Other tissue", tissue)) %>%
+    ggplot(aes(x = path_pre, y = path_full, col = Tissue)) +
     geom_point() +
-    theme_bw()
+    theme_bw() +
+    xlab("Initial gene set activity score") +
+    ylab("Final gene set activity score") +
+    scale_color_manual(values = c("#fcfc7e", "grey"))
 
-w_mix <- path_w_comb[, 8]
-w_mix[c("FMO1", "CDO1", "FMO2", "BAAT")] <- path_w_comb[c("FMO1", "CDO1",  "FMO2",  "BAAT"), 1]
-path_mix <- t(all_gtex[path_df$ensembl, ]) %*% w_mix
+png("figures/hsa00430_step1_step3.png", height = 300, width = 300)
+plot_train
+dev.off()
 
-df_path %>%
-  mutate(col = ifelse(!tissue %in% c("Liver", "Brain", "Bone Marrow", "Colon", "Prostate", "Stomach"), "Other tissue", tissue),
-          mix = elu(path_mix)) %>%
-      ggplot(aes(x = path_pre, y = mix, col = col)) +
-      geom_point() +
-      theme_bw()
-
-
-#
-df_path %>%
-  mutate(col = ifelse(!tissue %in%  c("Liver", "Brain", "Bone Marrow", "Colon", "Prostate", "Stomach"), "Other tissue", tissue),
-          mix = elu(path_mix)) %>%
-      ggplot(aes(x = mix, y = path_full, col = col)) +
-      geom_point() +
-      theme_bw()
-
-#
-w_mix <- path_w_comb[, 8]
-w_mix[c("GAD1", "GAD2", "ADO")] <- path_w_comb[c("GAD1", "GAD2", "ADO"), 1]
-path_mix <- t(all_gtex[path_df$ensembl, ]) %*% w_mix
-
-df_path %>%
-  mutate(col = ifelse(!tissue %in% c("Liver", "Brain", "Bone Marrow", "Colon", "Prostate", "Stomach"), "Other tissue", tissue),
-          mix = elu(path_mix)) %>%
-      ggplot(aes(x = path_pre, y = mix, col = col)) +
-      geom_point() +
-      theme_bw()
-
-
-#
-df_path %>%
-  mutate(col = ifelse(!tissue %in% c("Liver", "Brain", "Bone Marrow", "Colon", "Prostate", "Stomach"), "Other tissue", tissue),
-          mix = elu(path_mix)) %>%
-      ggplot(aes(x = mix, y = path_full, col = col)) +
-      geom_point() +
-      theme_bw()
-
-png("figures/diff_path_activation_hs00430.png", width = 2000)
-df_path_filt %>%
-  mutate(path_full  = path_full * 0.930495 +  0.106673 ) %>%
-  gather(train, value, 1:2) %>%
-  mutate(train = factor(train, levels = c("path_pre", "path_full"))) %>%
-  ggplot(aes(x = tissue, y = value, col = train)) +
-  geom_boxplot() +
-  theme_bw()
+png("figures/hsa00430_scores_panel.png", width = 600, height = 300)
+plot_grid(pc_plot, plot_train, nrow = 1, labels = c("A", "B"), rel_widths = c(2, 3))
 dev.off()
 
 
-## Select hsa00100 weights
-path_w2 <- weights["path:hsa00100", subset(path.map, PathwayID == "path:hsa00100")$Symbol]
-
-path_df2 <- data.frame(ensembl = names(path_w2), weights = path_w2)
-path_cor2 <- cor(t(data.matrix(assay(gtex.vst[path_df2$ensembl, ]))), gtex.feat[, "path:hsa00100"])
-
-path_df2$cor <- path_cor2
-path_df2$Symbol <- mapIds(org.Hs.eg.db, path_df2$ensembl , keytype= "ENSEMBL", column="SYMBOL")
+a <- path_w_comb[, c("main", "1")] %>%
+  data.frame() %>%
+  mutate(Gene = rownames(path_w_comb),
+        diff = abs(main - X1)) %>%
+  arrange(abs(diff))
 
 
-gene_cors2 <- cor(t(data.matrix(assay(gtex.vst[path_df2$ensembl, ]))))
-colnames(gene_cors2) <- rownames(gene_cors2) <- path_df2$Symbol
-corrplot(gene_cors2, method = "number", order = "hclust")
+plot_weight <- path_w_comb[, c("main", "1")] %>%
+  data.frame() %>%
+  mutate(Gene = rownames(path_w_comb)) %>%
+  filter(Gene %in% c("GAD1", "GAD2", "FMO1")) %>%
+  gather(Model, Weight, 1:2) %>%
+  mutate(Model = recode(Model, main = "Final", X1 = "Initial"),
+          Model = factor(Model, levels = c("Initial", "Final"))) %>%
+    ggplot(aes(x = Model, y = Weight, group = Gene, col = Gene)) +
+    geom_point() +
+    geom_line() +
+    theme_bw()
 
-pc_path2 <- prcomp(t(data.matrix(assay(gtex.vst[path_df2$ensembl, ]))), scale = TRUE)
+png("figures/hsa00430_weights.png", height = 300, width = 300)
+plot_weight
+dev.off()
 
-plot(pc_path2$x[, 1], gtex.feat[, "path:hsa00100"] )
+#
+brain_path <- subset(path_df,Symbol  %in% c("GAD1", "GAD2", "FMO1"))
+brain_mat <- t(data.matrix(assay(gtex.vst[brain_path$ensembl, ] )))
+colnames(brain_mat) <- brain_path$Symbol
 
+plot_genes <- data.frame(brain_mat, Tissue = gtex.vst$smts) %>%
+  filter(!Tissue %in% c("", "Fallopian Tube", "Bladder", "Cervix Uteri", "Kidney")) %>%
+  mutate(Group = ifelse(!Tissue %in% c("Brain"), "Other tissue", Tissue)) %>%
+  gather(Gene, Expression, 1:3) %>%
+  ggplot(aes(x = Tissue, y = Expression, color = Group)) +
+  geom_violin() +
+  scale_color_manual(values = c("#fcfc7e", "grey")) +
+  facet_grid(Gene ~ ., scales = "free_y") +
+  theme_bw()
 
-
-## Select hsa00220 weights
-path_w3 <- weights["path:hsa00220", subset(path.map, PathwayID == "path:hsa00220")$Symbol]
-
-path_df3 <- data.frame(ensembl = names(path_w3), weights = path_w3)
-path_cor3 <- cor(t(data.matrix(assay(gtex.vst[path_df3$ensembl, ]))), gtex.feat[, "path:hsa00220"])
-
-path_df3$cor <- path_cor3
-path_df3$Symbol <- mapIds(org.Hs.eg.db, path_df3$ensembl , keytype= "ENSEMBL", column="SYMBOL")
-
-
-gene_cors3 <- cor(t(data.matrix(assay(gtex.vst[path_df3$ensembl, ]))))
-colnames(gene_cors3) <- rownames(gene_cors3) <- path_df3$Symbol
-corrplot(gene_cors3, method = "number", order = "hclust")
-
-pc_path3 <- prcomp(t(data.matrix(assay(gtex.vst[path_df3$ensembl, ]))), scale = TRUE)
-
-plot(pc_path3$x[, 1], gtex.feat[, "path:hsa00220"] )
+#
+png("figures/hsa00430_sel_gene_exprs.png", width = 1900)
+plot_genes
+dev.off()

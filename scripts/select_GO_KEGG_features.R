@@ -9,6 +9,9 @@
 library(tidyverse)
 library(parallel)
 library(matrixStats)
+library(ggrepel)
+library(ggcorrplot)
+library(cowplot)
 # library(GOSemSim)
 
 ## Load functions
@@ -44,8 +47,6 @@ paths <- read.table("results/GTEx_coding/comb_paths_v3.6/model_trained/pathways_
 paths.vec <- as.character(paths[, 1])
 input_genes <- read.table("results/GTEx_coding/input_genes.txt", header = FALSE)
 
-paths2 <- read.table("results/GTEx_coding/paths_filt1_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
-paths.vec2 <- as.character(paths2[, 1])
 
 
 kegg.map.com <- subset(kegg.map, PathwayID %in% paths.vec & Symbol %in% input_genes$V1)
@@ -70,7 +71,6 @@ gene_dmat <- as.matrix(gene_d)
 
 ## Load values of pathways without full training
 path_vals_full <- readPathways("comb_paths_v3.6", sufix = c("", letters[1:5]), path_name = paths.vec)
-path_vals_full2 <- readPathways("paths_filt1_full_v3.6", sufix = c("", letters[1:5]), path_name = paths.vec2)
 path_vals_pre <- readPathways("comb_paths_v3.8", sufix = c("", letters[1:5]), path_name = paths.vec)
 
 ## Define replicability
@@ -80,12 +80,6 @@ df.full <- makeDFsum(full.cors,"full") %>%
   left_join(data.frame(kegg.N) %>% mutate(path = Var1) %>% dplyr::select(-Var1), by = "path") %>%
   mutate(Database = ifelse(substring(path, 1, 2) == "GO", "GO", "KEGG"))
 
-#
-full.cors2 <- sapply(paths.vec2, pathwayCorr, path_list = path_vals_full2)
-colnames(full.cors2) <- paths.vec2
-df.full2 <- makeDFsum(full.cors2,"full") %>%
-  left_join(data.frame(kegg.N) %>% mutate(path = Var1) %>% dplyr::select(-Var1), by = "path") %>%
-  mutate(Database = ifelse(substring(path, 1, 2) == "GO", "GO", "KEGG"))
 
 pre.cors <- sapply(paths.vec, pathwayCorr, path_list = path_vals_pre)
 colnames(pre.cors) <- paths.vec
@@ -268,23 +262,35 @@ write.table(kegg.map.filt, file = "results/GTEx_coding/go_kegg_filt_gene_map.tsv
 
 
 ##
-sel_paths2 <- subset(df.full2, minCor > 0.7)$path
-kegg.map.filt2 <- subset(kegg.map, PathwayID %in% sel_paths2)
-write.table(kegg.map.filt2, file = "results/GTEx_coding/go_kegg_final_gene_map.tsv",
+paths2 <- read.table("results/GTEx_coding/paths_filt1_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
+paths.vec2 <- as.character(paths2[, 1])
+
+path_vals_full2 <- readPathways("paths_filt1_full_v3.6", sufix = c("", letters[1:5]), path_name = paths.vec2)
+
+full.cors2 <- sapply(paths.vec2, pathwayCorr, path_list = path_vals_full2)
+colnames(full.cors2) <- paths.vec2
+df.full2 <- makeDFsum(full.cors2,"full") %>%
+  left_join(data.frame(kegg.N) %>% mutate(path = Var1) %>% dplyr::select(-Var1), by = "path") %>%
+  mutate(Database = ifelse(substring(path, 1, 2) == "GO", "GO", "KEGG"))
+
+
+
+path_vals_full2b <- readPathways("paths_filt1_full_v3.11", sufix = c("", letters[1:5]), path_name = paths.vec2)
+
+full.cors2b <- sapply(paths.vec2, pathwayCorr, path_list = path_vals_full2b)
+colnames(full.cors2b) <- paths.vec2
+df.full2b <- makeDFsum(full.cors2b,"full") %>%
+  left_join(data.frame(kegg.N) %>% mutate(path = Var1) %>% dplyr::select(-Var1), by = "path") %>%
+  mutate(Database = ifelse(substring(path, 1, 2) == "GO", "GO", "KEGG"))
+
+
+sel_paths2 <- subset(df.full2b, minCor > 0.7)$path
+kegg.map.filt2 <- subset(kegg.map, PathwayID %in% sel_paths2 & Symbol %in% input_genes$V1)
+write.table(kegg.map.filt2, file = "results/GTEx_coding/go_kegg_filt2_gene_map.tsv",
             quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
 
 
-
-
-
-# Explore distance of selected genes
-gene_dmat_filt <- gene_dmat[paths.vec2, paths.vec2]
-diag(gene_dmat_filt) <- 1
-dist_df_filt <- tibble(path = rownames(gene_dmat_filt), min_dist = rowMins(gene_dmat_filt)) %>%
-  left_join(df.full2, by = "path")
-
-ggplot(dist_df_filt, aes(x = min_dist, y = minCor)) + geom_point()
-
+##
 paths3 <- read.table("results/GTEx_coding/paths_filt2_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
 paths.vec3 <- as.character(paths3[, 1])
 
@@ -297,106 +303,107 @@ df.full3 <- makeDFsum(full.cors3,"full") %>%
   left_join(data.frame(kegg.N) %>% mutate(path = Var1) %>% dplyr::select(-Var1), by = "path") %>%
   mutate(Database = ifelse(substring(path, 1, 2) == "GO", "GO", "KEGG"))
 
+#
+paths3b <- read.table("results/GTEx_coding/paths_filt2_full_v3.11/model_trained/pathways_names.txt", header = TRUE)
+paths.vec3b <- as.character(paths3b[, 1])
+
+path_vals_full3b <- readPathways("paths_filt2_full_v3.11", sufix = c("", letters[1:5]), path_name = paths.vec3b)
 
 
+full.cors3b <- sapply(paths.vec3b, pathwayCorr, path_list = path_vals_full3b)
+colnames(full.cors3b) <- paths.vec3b
+df.full3b <- makeDFsum(full.cors3b,"full") %>%
+  left_join(data.frame(kegg.N) %>% mutate(path = Var1) %>% dplyr::select(-Var1), by = "path") %>%
+  mutate(Database = ifelse(substring(path, 1, 2) == "GO", "GO", "KEGG"))
 
+full.cors3b_main <- sapply(paths.vec3b, function(x) median(abs(cor(sapply(path_vals_full3b, function(y) y[, x]))[1,-1])))
 
+df.3b_worse <- df.full3b %>%
+  mutate(main_cor = full.cors3b_main) %>%
+  filter(minCor < 0.7)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Repeat all excluding small pathways
-med_paths <- as.character(subset(kegg.N, Freq < 100 & Freq > 20)$Var)
-## Compute correlation between pathways
-gene_dmat_sel3 <- gene_dmat[med_paths, med_paths]
-diag(gene_dmat_sel3) <- 1
-dist_df2 <- tibble(path = rownames(gene_dmat_sel3), min_dist = rowMins(gene_dmat_sel3))
-
-cor_l2 <- mclapply(path_vals_pre, function(x) cor(x[, med_paths]), mc.cores = 6)
-cor_mat0b <- cor_l2[[1]]
-rownames(cor_mat0b) <- colnames(cor_mat0b) <- med_paths
-diag(cor_mat0b) <- 0
-cor_df2 <- tibble(path = rownames(cor_mat0b), max_cor = rowMaxs(abs(cor_mat0b)))
-
-
-cor_full0b <- cor(path_vals_full[[1]][, med_paths])
-
-sim_go3 <- sim_go[med_paths, med_paths]
-diag(sim_go3) <- 0
-sim_df2 <- tibble(path = rownames(sim_go3), max_sim = rowMaxs(sim_go3))
-
-
-df.comb.sel2 <- filter(df.comb, path %in% med_paths) %>%
-  mutate(diff_rep = pretrained - full) %>%
-  left_join(dist_df2, by = "path") %>%
-  left_join(sim_df2, by = "path") %>%
-  left_join(cor_df2, by = "path")
-
-
+png("figures/select_features_worse.png")
+ggplot(df.3b_worse, aes( x = minCor, y = main_cor) ) + geom_point() +
+  theme_bw() +
+  xlab("Replicability") +
+  ylab("Median correlation main model") +
+  geom_label_repel(data = subset(df.3b_worse, main_cor < 0.7), aes(label = path))
+dev.off()
 
 #
-minCors_list2 <- lapply(cuts, function(y){
-  cls <- cutree(hclust(gene_dmini), h = y)
-  minCors <- sapply(unique(cls), function(x) {
-    minicor <- cor_mean[cls == x, cls != x]
-    if (!is(minicor, "matrix")){
-      return(NA)
-    } else {
-      max(abs(minicor))
-    }
-  })
-  minCors
-})
-minCors_df2 <- data.frame(maxCor = unlist(minCors_list2),
-                          cut = rep(cuts, lengths(minCors_list2)))
+# sel_paths3 <- subset(df.full3, minCor > 0.7)$path
+# kegg.map.filt3 <- subset(kegg.map, PathwayID %in% sel_paths3 & Symbol %in% input_genes$V1)
+# write.table(kegg.map.filt3, file = "results/GTEx_coding/go_kegg_filt3_gene_map.tsv",
+#             quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
+
+mat1 <- sapply(path_vals_full3b, function(y) y[, "path:hsa00591"])
+cor1 <- cor(mat1)
+rownames(cor1) <- colnames(cor1) <- c("Main", paste("Initialization", 1:5))
+plot_cor1 <- ggcorrplot(cor1,  method = "circle") +
+  ggtitle("path:hsa00591") +
+  theme(plot.title = element_text(hjust = 0.5, size = 25))
+
+plot_path1 <- data.frame(Main = mat1[, 1], mod = mat1[, 4]) %>%
+  ggplot(aes( x = Main, y = mod)) +
+  geom_point() +
+  theme_bw() +
+  ggtitle("path:hsa00591") +
+  xlab("Initialization 3") +
+  theme(plot.title = element_text(hjust = 0.5, size = 25))
 
 
-minCors_df2 %>%
-  group_by(cut) %>%
-  summarize(n = n(), nclust = sum(!is.na(maxCor)), mean90 = mean(maxCor > 0.9, na.rm = TRUE),
-            mean85 = mean(maxCor > 0.85, na.rm = TRUE),
-            mean80 = mean(maxCor > 0.8, na.rm = TRUE))
-
-
-cuts2 <- 1 - c(0.99, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7)
-mindist_list <- lapply(cuts2, function(y){
-  cls <- cutree(hclust(as.dist(1 - cor_mean)), h = y)
-  minCors <- sapply(unique(cls), function(x) {
-    minid <- gene_dmat_sel[cls == x, cls == x]
-    if (!is(minid, "matrix")){
-      return(NA)
-    } else {
-      max(minid)
-    }
-  })
-  minCors
-})
-mindist_df <- data.frame(minDist = unlist(mindist_list),
-                          cut = rep(cuts2, lengths(mindist_list)))
-mindist_df %>%
-  group_by(cut) %>%
-  summarize(n = n(), nclust = sum(!is.na(minDist)), mean10 = mean(minDist < 0.1, na.rm = TRUE),
-            mean30 = mean(minDist < 0.3, na.rm = TRUE),
-            mean50 = mean(minDist < 0.5, na.rm = TRUE))
-
-png("figures/clustering_cor_vs_distance.png")
-mindist_df %>% ggplot(aes(x = factor(cut), y = minDist)) + geom_boxplot() + theme_bw()
+png("figures/select_features_hsa00591.png", width = 1100, height = 500)
+plot_grid(plot_cor1, plot_path1, labels = LETTERS[1:2], ncol = 2 )
 dev.off()
+
+mat2 <- sapply(path_vals_full3b, function(y) y[, "GO:0045663"])
+cor2 <- cor(mat2)
+rownames(cor2) <- colnames(cor2) <- c("Main", paste("Initialization", 1:5))
+plot_cor2 <- ggcorrplot(cor2,  method = "circle") +
+  ggtitle("GO:0045663") +
+  theme(plot.title = element_text(hjust = 0.5, size = 25))
+
+plot_path2 <- data.frame(Main = mat2[, 1], mod = mat2[, 4]) %>%
+  ggplot(aes( x = Main, y = mod)) +
+  geom_point() +
+  theme_bw() +
+  ggtitle("GO:0045663") +
+  xlab("Initialization 3") +
+  theme(plot.title = element_text(hjust = 0.5, size = 25))
+
+png("figures/select_features_GO0045663.png", width = 1100, height = 500)
+plot_grid(plot_cor2, plot_path2, labels = LETTERS[1:2], ncol = 2 )
+dev.off()
+
+mat3 <- sapply(path_vals_full3b, function(y) y[, "GO:0042538"])
+cor3 <- cor(mat3)
+rownames(cor3) <- colnames(cor3) <- c("Main", paste("Initialization", 1:5))
+plot_cor3 <- ggcorrplot(cor3,  method = "circle") +
+  ggtitle("GO:0042538") +
+  theme(plot.title = element_text(hjust = 0.5, size = 25))
+
+plot_path3 <- data.frame(Main = mat3[, 1], mod = mat3[, 2]) %>%
+  ggplot(aes( x = Main, y = mod)) +
+  geom_point() +
+  theme_bw() +
+  ggtitle("GO:0042538") +
+  xlab("Initialization 1") +
+  theme(plot.title = element_text(hjust = 0.5, size = 25))
+
+png("figures/select_features_GO0042538.png", width = 1100, height = 500)
+plot_grid(plot_cor3, plot_path3, labels = LETTERS[1:2], ncol = 2 )
+dev.off()
+
+#
+# #
+# paths4 <- read.table("results/GTEx_coding/paths_filt3_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
+# paths.vec4 <- as.character(paths4[, 1])
+#
+# path_vals_full4 <- readPathways("paths_filt3_full_v3.6", sufix = c("", letters[1:5]), path_name = paths.vec4)
+#
+#
+# full.cors4 <- sapply(paths.vec4, pathwayCorr, path_list = path_vals_full4)
+# colnames(full.cors4) <- paths.vec4
+# df.full4 <- makeDFsum(full.cors4, "full") %>%
+#   left_join(data.frame(kegg.N) %>% mutate(path = Var1) %>% dplyr::select(-Var1), by = "path") %>%
+#   mutate(Database = ifelse(substring(path, 1, 2) == "GO", "GO", "KEGG"))

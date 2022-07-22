@@ -24,7 +24,7 @@ from numpy import array, argmax
 from tensorflow.keras.models import Sequential, Model
 
 ## Train
-f = h5py.File("results/TCGA_gexp_coding_noPRAD/train_assay_reshaped_standardized.h5", 'r')
+f = h5py.File("results/GTEx/all_reshaped_standardized.h5", 'r')
 methy = f['methy'][...]
 f.close()
 
@@ -40,11 +40,11 @@ ibd = f['methy'][...]
 f.close()
 
 
-## V3.6
-model = tf.keras.models.load_model('results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_trained/TCGA_gexp_coding_noPRAD')
+## Model
+model = tf.keras.models.load_model('results/GTEx_coding/paths_filt2_full_v3.11/model_trained/GTEx_coding')
 Y_pred = model.predict(methy)
 
-f = h5py.File('results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.6/model_features/autoencoder_output.h5', 'w')
+f = h5py.File('results/GTEx_coding/paths_filt2_full_v3.11/model_features/autoencoder_output.h5', 'w')
 dataset_input = f.create_dataset('auto', (Y_pred.shape[0], Y_pred.shape[1]))
 dataset_input[...] = Y_pred
 f.close()
@@ -53,17 +53,32 @@ f.close()
 
 Y_prad = model.predict(prad)
 
-f = h5py.File('results/TCGA_gexp_coding_PRAD/comb_paths3_v3.6/model_features/autoencoder_output.h5', 'w')
+f = h5py.File('results/GTEx_coding_PRAD/paths_filt2_full_v3.11/model_features/autoencoder_output.h5', 'w')
 dataset_input = f.create_dataset('auto', (Y_prad.shape[0], Y_prad.shape[1]))
 dataset_input[...] = Y_prad
 f.close()
 
 Y_ibd = model.predict(ibd)
 
-f = h5py.File('results/SRP042228/comb_paths3_v3.6/model_features/autoencoder_output.h5', 'w')
+f = h5py.File('results/SRP042228/paths_filt2_full_v3.11/model_features/autoencoder_output.h5', 'w')
 dataset_input = f.create_dataset('auto', (Y_ibd.shape[0], Y_ibd.shape[1]))
 dataset_input[...] = Y_ibd
 f.close()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## autoencoder
 auto = tf.keras.models.load_model('results/TCGA_gexp_coding_noPRAD/autoencod_v2.3/model_trained/TCGA_gexp_coding_noPRAD')

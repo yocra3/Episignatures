@@ -1,4 +1,4 @@
-## Params for dnn pathway v4 - network2
+## Params for dnn pathway v4 - network3
 alpha = 0.001
 epochs = 50
 batch_size = 128

@@ -1,3 +1,5 @@
+docker run -it -v /home/SHARED/PROJECTS/Episignatures:/home/SHARED/PROJECTS/Episignatures -w "$PWD" yocra3/episignatures_rsession:1.3  /bin/bash
+R
 #'#################################################################################
 #'#################################################################################
 #' Analyze PRAD
@@ -9,40 +11,40 @@ library(limma)
 library(DESeq2)
 library(tidyverse)
 library(cowplot)
-library(fgsea)
+library(GSVA)
 library(e1071)
 library(HDF5Array)
 library(hipathia)
 library(org.Hs.eg.db)
-
+library(parallel)
 
 
 load("data/tcga_gexp_combat.Rdata")
 genes <- read.table("./results/GTEx_coding/input_genes.txt")
 
-path.map <- read.table("results/GTEx_coding/go_kegg_final_gene_map.tsv", header = TRUE)
+path.map <- read.table("results/GTEx_coding/go_kegg_filt2_gene_map.tsv", header = TRUE)
 
-prad.feat <- read.table("results/GTEx_coding_PRAD_tumor/paths_filt2_full_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
-paths <- read.table("results/GTEx_coding/paths_filt2_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
+prad.feat <- read.table("results/GTEx_coding_PRAD_tumor/paths_filt2_full_v3.11/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+paths <- read.table("results/GTEx_coding/paths_filt2_full_v3.11/model_trained/pathways_names.txt", header = TRUE)
 paths.vec <- as.character(paths[, 1])
 colnames(prad.feat) <- paths.vec
 
 ## Subset data
 prad.vst <- loadHDF5SummarizedExperiment("results/TCGA_gexp_coding_noPRAD/", prefix = "vsd_norm_prad_tumor")
 
-prad <- gexp_tcga_combat[genes$V1, gexp_tcga_combat$project_id == "TCGA-PRAD"]
-prad <- prad[, !is.na(prad$paper_Reviewed_Gleason_category)]
+prad.all <- gexp_tcga_combat[genes$V1, gexp_tcga_combat$project_id == "TCGA-PRAD"]
+prad <- prad.all[, !is.na(prad.all$paper_Reviewed_Gleason_category)]
 
 ## DE in raw data
 prad$gleason <- ifelse(prad$paper_Reviewed_Gleason_category == ">=8", "High", "Low")
 ddsSE <- DESeqDataSet(prad, design = ~ paper_Subtype + age_at_index + race + gleason )
 vst.prad <- vst(ddsSE, blind=FALSE)
-
-pc.ori <- prcomp(t(assay(vst.prad)))
-data.frame(pc.ori$x, var = prad$paper_Reviewed_Gleason_category) %>% ggplot(aes(x = PC1, y = PC2, color = var)) + geom_point()
-data.frame(pc.ori$x, var = prad$gleason) %>% ggplot(aes(x = PC1, y = PC2, color = var)) + geom_point()
-data.frame(pc.ori$x, var = prad$paper_Subtype) %>% ggplot(aes(x = PC1, y = PC2, color = var)) + geom_point()
-
+#
+# pc.ori <- prcomp(t(assay(vst.prad)))
+# data.frame(pc.ori$x, var = prad$paper_Reviewed_Gleason_category) %>% ggplot(aes(x = PC1, y = PC2, color = var)) + geom_point()
+# data.frame(pc.ori$x, var = prad$gleason) %>% ggplot(aes(x = PC1, y = PC2, color = var)) + geom_point()
+# data.frame(pc.ori$x, var = prad$paper_Subtype) %>% ggplot(aes(x = PC1, y = PC2, color = var)) + geom_point()
+#
 
 dds <- DESeq(ddsSE)
 res_prad <- results(dds)
@@ -71,7 +73,11 @@ tab.path_prad$DE_prop <- sapply( tab.path_prad$category, function(cat) {
   mini_tab <- res_prad[genes, ]
   mean(mini_tab$padj  < 0.05, na.rm = TRUE)
 })
-save(tab.path_prad, file = "results/TCGA_PRAD/pathways_results.Rdata")
+
+tab.path_prad_race <- topTable(lm.path, coef = 13, n = Inf)
+tab.path_prad_race$category <- rownames(tab.path_prad_race)
+
+save(tab.path_prad, tab.path_prad_race, file = "results/TCGA_PRAD/pathways_results.Rdata")
 
 
 png("figures/TCGA_propDE_vs_pvalPaths.png")
@@ -82,31 +88,38 @@ ggplot(tab.path_prad, aes(x = DE_prop, y = -log10(P.Value ))) +
  theme_bw()
 dev.off()
 cor(tab.path_prad$ DE_prop, -log10(tab.path_prad$P.Value), use = "complete")
-# [1] 0.3421541
+# [1] 0.3691912
 
 cor(tab.path_prad$DE_prop, abs(tab.path_prad$logFC), use = "complete")
-# 0.327146
+# 0.3467721
 
 
 cor(tab.path_prad$DE_prop[tab.path_prad$DE_prop > 0 ], abs(tab.path_prad$logFC)[tab.path_prad$DE_prop > 0 ], use = "complete")
-# 0.3294506
+# 0.345959
 # comb.df <- left_join(tab.path, gos.mod, by = "category")
 # comb.df$min_p <- pmin(comb.df$over_represented_pvalue, comb.df$under_represented_pvalue)
 # plot(-log10(comb.df$min_p), -log10(comb.df$P.Value ))
 # cor(-log10(comb.df$min_p), -log10(comb.df$P.Value ), use = "complete")
 
-## fgsea
-ranks <- res_prad$log2FoldChange
-ranks[is.na(ranks)] <- 0
+## GSVA
+path_genes <- mclapply(paths.vec, function(x) subset(path.map, PathwayID == x & !is.na(Symbol))$Symbol, mc.cores = 10)
+names(path_genes) <- paths.vec
+prad_gsva <- gsva(prad, path_genes, min.sz=5, max.sz=500, kcdf = "Poisson")
 
-entrez_ids <- mapIds(org.Hs.eg.db, rownames(res_prad), keytype="ENSEMBL", column="ENTREZID")
-names(ranks) <- entrez_ids
 
-pathways <- reactomePathways(entrez_ids)
-# names(paths.vec) <- paths.vec
-# pathways <- lapply( paths.vec, function(x) subset(path.map, PathwayID  == x )$Symbol)
-fgseaRes_prad <- fgsea(pathways = pathways, stats = ranks)
-save(fgseaRes_prad, file = "results/TCGA_PRAD/fgsea_results.Rdata")
+lm.gsva <- lmFit(assay(prad_gsva), mod) %>% eBayes()
+tab.gsva_prad <- topTable(lm.gsva, coef = 2, n = Inf)
+tab.gsva_prad$category <- rownames(tab.gsva_prad)
+
+save(tab.gsva_prad, prad_gsva, file = "results/TCGA_PRAD/GSVA_results.Rdata")
+
+prad_gsva.all <- gsva(prad.all, path_genes, min.sz=5, max.sz=500, kcdf = "Poisson")
+prad_gsva.all.filt <- prad_gsva.all[, colnames(prad)]
+
+prad_gsva.mini <- gsva(prad[, prad$gleason == "High"], path_genes, min.sz=5, max.sz=500, kcdf = "Poisson")
+
+prad_gsva.control <- gsva(prad.all[, prad.all$sample_type == "Solid Tissue Normal"], path_genes, min.sz=5, max.sz=500, kcdf = "Poisson")
+cot <- cor(t(assay(prad_gsva.control)), t(assay(prad_gsva.all[, prad.all$sample_type == "Solid Tissue Normal"])))
 #
 # df.comb2 <- left_join(fgseaRes, tab.path, by = "category")
 #
@@ -125,10 +138,10 @@ exp_data <- normalize_data(trans_data)
 hip_pathways <- load_pathways(species = "hsa")
 
 hip.res_prad <- hipathia(exp_data, hip_pathways, decompose = FALSE, verbose = TRUE)
-hip.path_vals <- get_paths_data(hip.res_prad )
-hip.comp_prad <- do_wilcoxon(hip.path_vals, hip.path_vals$gleason, g1 = "High", g2 = "Low")
+hip.prad_vals <- get_paths_data(hip.res_prad )
+hip.comp_prad <- do_wilcoxon(hip.prad_vals, hip.prad_vals$gleason, g1 = "High", g2 = "Low")
 
-save(hip.comp_prad, file = "results/TCGA_PRAD/hipathia.res.Rdata")
+save(hip.comp_prad, hip.prad_vals, file = "results/TCGA_PRAD/hipathia.res.Rdata")
 
 
 ## Train SVM to classify gleason

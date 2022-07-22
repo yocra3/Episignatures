@@ -1,36 +1,40 @@
-#'#################################################################################
-#'#################################################################################
-#' Analyze GSE169038 datasete
-#'#################################################################################
-#'#################################################################################
+docker run -it -v /home/SHARED/PROJECTS/Episignatures:/home/SHARED/PROJECTS/Episignatures -w "$PWD" yocra3/episignatures_rsession:1.3  /bin/bash
 
+#'#################################################################################
+#'#################################################################################
+#' Analyze PRAD
+#'#################################################################################
+#'#################################################################################
 
 ## Load libraries
-library(fgsea)
 library(limma)
+library(DESeq2)
 library(tidyverse)
 library(cowplot)
-library(HDF5Array)
-library(SummarizedExperiment)
+library(GSVA)
 library(e1071)
+library(HDF5Array)
 library(hipathia)
 library(org.Hs.eg.db)
+library(parallel)
 library(rjson)
+
 
 load("results/GSE169038/allGenes.se.RData")
 se.tcga_genes <- loadHDF5SummarizedExperiment("results/GSE169038/", prefix = "network_genes")
 
 
 genes <- read.table("./results/TCGA_gexp_combat_coding/input_genes.txt")
-path.map <- read.table("results/GTEx_coding/go_kegg_final_gene_map.tsv", header = TRUE)
+path.map <- read.table("results/GTEx_coding/go_kegg_filt2_gene_map.tsv", header = TRUE)
+path_N <- group_by(path.map, PathwayID) %>% summarize(N = n()) %>% mutate(category = PathwayID)
 
-prad.feat <- read.table("results/GSE169038/paths_filt2_full_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
-paths <- read.table("results/GTEx_coding/paths_filt2_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
+prad.feat <- read.table("results/GSE169038/paths_filt2_full_v3.11/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+paths <- read.table("results/GTEx_coding/paths_filt2_full_v3.11/model_trained/pathways_names.txt", header = TRUE)
 paths.vec <- as.character(paths[, 1])
 colnames(prad.feat) <- paths.vec
 
-
-pc.feat <- prcomp(prad.feat)
+load("results/GTEx_coding/paths_filt2_full_v3.11/gtex_tcga_comparative.Rdata")
+# pc.feat <- prcomp(prad.feat)
 
 se$race <- ifelse(grepl( "White", se$characteristics_ch1.4), "EUR", "AFR")
 se$decipher <- factor(gsub("decipher risk group: ", "", se$characteristics_ch1.3), levels = c("Lower", "Average", "Higher"))
@@ -44,6 +48,7 @@ se$gleason <- ifelse(se$primary == 5 |  se$secondary == 5 | se$gleason_cat == "4
 ## Subset samples with gleason < 3
 se.filt <- se[, !(se$primary == 1 |  se$secondary == 1)]
 prad.feat.filt <- prad.feat[!(se$primary == 1 |  se$secondary == 1), ]
+se.tcga_genes_filt <- se.tcga_genes[, !(se$primary == 1 |  se$secondary == 1)]
 
 
 ## DE genes
@@ -56,23 +61,18 @@ tab.genes_geo$gene <- rowData(se)[as.character(rownames(tab.genes_geo )), "gene"
 save(tab.genes_geo, file = "results/GSE169038/de_genes_results.Rdata")
 
 
-## fgsea
-ranks <- tab.genes_geo$logFC
-# names(ranks) <- rowData(se)[rownames(tab.genes), "gene"]
-#
-# names(paths.vec) <- paths.vec
-# pathways <- lapply( paths.vec, function(x) subset(path.map, PathwayID  == x )$Symbol)
-# fgseaRes <- fgsea(pathways = pathways, stats = ranks)
-# fgseaRes$category <- fgseaRes$pathway
+## GSVA
+path_genes <- mclapply(paths.vec, function(x) subset(path.map, PathwayID == x & !is.na(Symbol))$Symbol, mc.cores = 10)
+names(path_genes) <- paths.vec
+geo_gsva <- gsva(data.matrix(assay(se.tcga_genes_filt)), path_genes, min.sz=5, max.sz=500)
 
-entrez_ids <- mapIds(org.Hs.eg.db, tab.genes_geo$gene, keytype="ENSEMBL", column="ENTREZID")
+lm.gsva <- lmFit(geo_gsva, mod) %>% eBayes()
+tab.gsva_geo <- topTable(lm.gsva, coef = 2, n = Inf)
+tab.gsva_geo$category <- rownames(tab.gsva_geo)
 
-names(ranks) <- entrez_ids
-pathways <- reactomePathways(as.character(entrez_ids))
-# names(paths.vec) <- paths.vec
-# pathways <- lapply( paths.vec, function(x) subset(path.map, PathwayID  == x )$Symbol)
-fgseaRes_geo <- fgsea(pathways = pathways, stats = ranks)
-save(fgseaRes_geo, file = "results/GSE169038/fgsea_results.Rdata")
+save(tab.gsva_geo, geo_gsva, file = "results/GSE169038/GSVA_results.Rdata")
+
+tab.gsva_geo_race <- topTable(lm.gsva, coef = 3, n = Inf)
 
 ## DE paths
 lm.paths <- lmFit(t(prad.feat.filt), mod) %>% eBayes()
@@ -115,18 +115,19 @@ dev.off()
 
 
 cor(tab.paths_geo$DE_prop, -log10(tab.paths_geo$P.Value))
-# [1] 0.3230612
+# [1] 0.3426017
 
 cor(abs(tab.paths_geo$logFC), tab.paths_geo$DE_prop)
-# [1] 0.294971
+# [1] 0.3162817
 
 cor(tab.paths_geo$DE_prop[tab.paths_geo$DE_prop > 0 ], abs(tab.paths_geo$logFC)[tab.paths_geo$DE_prop > 0 ], use = "complete")
-# 0.2516048
+# 0.3053439
 
 
 
 save(tab.paths_geo, file = "results/GSE169038/pathways_results.Rdata")
 
+tab.paths_geo_race <- topTable(lm.paths, coef = 3, n = Inf)
 
 
 ## hipathia
@@ -136,217 +137,14 @@ exp_data <- normalize_data(trans_data)
 hip_pathways <- load_pathways(species = "hsa")
 
 hip.res_geo <- hipathia(exp_data, hip_pathways, decompose = FALSE, verbose = TRUE)
-hip.path_vals <- get_paths_data(hip.res_geo )
-hip.comp_geo <- do_wilcoxon(hip.path_vals, hip.path_vals$gleason, g1 = "High", g2 = "Low")
+hip.geo_path <- get_paths_data(hip.res_geo )
+hip.comp_geo <- do_wilcoxon(hip.geo_path, hip.geo_path$gleason, g1 = "High", g2 = "Low")
 
-save(hip.comp_geo, file = "results/GSE169038/hipathia.res.Rdata")
-
-
-
-# Comparison between PRAD and GEO
-## Pathways
-load("results/TCGA_PRAD/pathways_results.Rdata")
-comb_paths <- left_join(tab.path_prad, tab.paths_geo, by = "category", suffix = c(".TCGA", ".GEO")) %>%
-  mutate(Signif = ifelse(adj.P.Val.TCGA < 0.05, ifelse(adj.P.Val.GEO < 0.05, "Both", "TCGA"),
-                              ifelse(adj.P.Val.GEO < 0.05, "GEO", "None")))
-path.plot <- ggplot(comb_paths, aes(x = logFC.TCGA, y = logFC.GEO, col = Signif)) +
-  geom_point() +
-  theme_bw()  +
-  scale_color_manual(values = c("#004D40", "#1E88E5", "#9E9E9E", "#FFC107")) +
-  ggtitle("GO + KEGG model") +
-  xlab("logFC in TCGA") +
-  ylab("logFC in GEO") +
-  geom_text(data =  data.frame(label = sprintf("N = %d \n r = %.2f", nrow(comb_paths), cor(comb_paths$logFC.TCGA, comb_paths$logFC.GEO)),
-   x = -Inf, y = Inf, hjust = -0.3, vjust = 1.5), aes(label = label, x = x, y = y, hjust = hjust, vjust = vjust), col = "black", size = 6) +
-  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
-      legend.position = "none",
-    text = element_text(size = 20))
+save(hip.comp_geo, hip.geo_path, file = "results/GSE169038/hipathia.res.Rdata")
 
 
 
-png("figures/TCGAvsGEO_logFC.png")
-path.plot
-dev.off()
 
-# png("figures/TCGAvsGEO_pval.png")
-# ggplot(comb_paths, aes(x = -log10(P.Value.TCGA), y =  -log10(P.Value.GEO), col = Signif)) +
-#   geom_point() +
-#   theme_bw()
-# dev.off()
-#
-
-## Add GO names
-term <- read.table("data/GO_terms/term.txt", sep = "\t", quote = "", comment.char = "", as.is = TRUE)
-term <- term[, c(2, 4)]
-colnames(term) <- c("Name", "category")
-
-
-
-kegg.annot <- fromJSON(file = "data/kegg_pathways.json")
-kegg.df <- lapply(kegg.annot$children, function(x) {
-  top_cat <- x$name
-  paths.df <- lapply(x$children, function(y){
-    cat2 <- y$name
-    paths <- sapply(y$children, function(z) z$name)
-    data.frame(top_cat = top_cat, category = cat2, path = paths)
-  })
-  Reduce(rbind, paths.df) %>%
-    as_tibble()
-}) %>%
- Reduce(rbind, .)
-kegg.df <- kegg.df %>%
-  mutate(category = paste0("path:hsa", substring(path, 0, 5)),
-          Name = gsub("^[0-9]*  ", "", path))
-
-path_map <- rbind(term, dplyr::select(kegg.df, Name, category))
-comb_paths_annot <- left_join(comb_paths, path_map, by = "category") %>%
-  dplyr::select(category, Name, ends_with("TCGA"), ends_with("GEO"), Signif) %>%
-  dplyr::select(-starts_with("AveExpr"), -starts_with("t"), -starts_with("B"))
-write.table(comb_paths_annot, file = "results/GSE169038/paths_results_comb.txt",
-  sep = "\t", quote = FALSE, row.names = FALSE )
-
-
-summary(lm(logFC.TCGA ~ logFC.GEO, comb_paths ))
-summary(lm(logFC.TCGA ~ logFC.GEO, comb_paths, subset = Signif != "None" ))
-
-cor(comb_paths$logFC.TCGA, comb_paths$logFC.GEO)
-# [1] 0.4680735
-cor(comb_paths[comb_paths$Signif != "None", ]$logFC.TCGA, comb_paths[comb_paths$Signif != "None", ]$logFC.GEO)
-# [1] 0.6787246
-table(sign(comb_paths$logFC.TCGA) == sign(comb_paths$logFC.GEO), comb_paths$Signif)
-prop.table(table(sign(comb_paths$logFC.TCGA) == sign(comb_paths$logFC.GEO), comb_paths$Signif), margin = 2)
-prop.table(table(sign(comb_paths$logFC.TCGA) == sign(comb_paths$logFC.GEO), comb_paths$Signif != "None"), margin = 2)
-
-png("figures/GSE169038_TCGA_propDE_vs_logFCPaths.png", height = 300)
-rbind(mutate(tab.path_prad, Dataset = "TCGA"),
-    mutate(tab.paths_geo, Dataset = "GEO")) %>%
-    mutate(Dataset = factor(Dataset, levels = c("TCGA", "GEO"))) %>%
-    ggplot(aes(x = DE_prop , y = abs(logFC))) +
-    geom_point() +
-    scale_x_continuous(name = "Proportion of genes DE") +
-    scale_y_continuous(name = "logFC Pathways (absolute value)") +
-    facet_wrap(~ Dataset) +
-    theme_bw()
-dev.off()
-
-
-
-## Compare Gene DE
-load("results/TCGA_PRAD/genes_results.Rdata")
-res_prad$gene <- rownames(res_prad)
-comb.genes <- left_join(data.frame(res_prad), tab.genes_geo , by = "gene")   %>%
-  mutate(Signif = ifelse(!is.na(padj) & padj  < 0.05, ifelse(adj.P.Val < 0.05, "Both", "TCGA"),
-                              ifelse(adj.P.Val < 0.05, "GEO", "None"))) %>%
-  filter(!is.na(pvalue ) & !is.na(P.Value  ))
-
-gene.plot <- ggplot(comb.genes, aes(x = log2FoldChange, y = logFC, col = Signif)) +
-  geom_point() +
-  theme_bw()  +
-  scale_color_manual(values = c("#004D40", "#1E88E5", "#9E9E9E", "#FFC107")) +
-  ggtitle("Genes") +
-  xlab("log2FC in TCGA") +
-  ylab("logFC in GEO") +
-  geom_text(data =  data.frame(label = sprintf("N = %d \n r = %.2f", nrow(comb.genes), cor(comb.genes$log2FoldChange, comb.genes$logFC)),
-   x = -Inf, y = Inf, hjust = -0.3, vjust = 1.5), aes(label = label, x = x, y = y, hjust = hjust, vjust = vjust), col = "black", size = 6) +
-  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
-      legend.position = "none",
-    text = element_text(size = 20))
-
-png("figures/TCGAvsGEO_genes_logFC.png")
-gene.plot
-dev.off()
-
-
-cor(comb.genes$log2FoldChange, comb.genes$logFC)
-# [1] 0.2488376
-cor(comb.genes[comb.genes$Signif != "None", ]$log2FoldChange, comb.genes[comb.genes$Signif != "None", ]$logFC, use = "complete")
-# [1] 0.3244926
-
-table(sign(comb.genes$log2FoldChange) == sign(comb.genes$logFC), comb.genes$Signif)
-prop.table(table(sign(comb.genes$log2FoldChange) == sign(comb.genes$logFC), comb.genes$Signif), margin = 2)
-prop.table(table(sign(comb.genes$log2FoldChange) == sign(comb.genes$logFC), comb.genes$Signif != "None"), margin = 2)
-
-
-## GSEA
-load("results/TCGA_PRAD/fgsea_results.Rdata")
-comb.fgsea <- inner_join(fgseaRes_prad, fgseaRes_geo, by = "pathway", suffix = c(".TCGA", ".GEO"))   %>%
-  mutate(Signif = ifelse(!is.na(padj.TCGA) & padj.TCGA  < 0.05, ifelse(padj.GEO < 0.05, "Both", "TCGA"),
-                              ifelse(padj.GEO < 0.05, "GEO", "None")))
-
-
-#
-fgsea.plot <- ggplot(comb.fgsea, aes(x = NES.TCGA, y = NES.GEO, col = Signif)) +
-  geom_point() +
-  theme_bw() +
-  scale_color_manual(values = c("#004D40", "#1E88E5", "#9E9E9E", "#FFC107")) +
-  ggtitle("GSEA") +
-  xlab("NES in TCGA") +
-  ylab("NES in GEO") +
-  geom_text(data =  data.frame(label = sprintf("N = %d \n r = %.2f", nrow(comb.fgsea), cor(comb.fgsea$NES.TCGA, comb.fgsea$NES.GEO)),
-   x = -Inf, y = Inf, hjust = -0.3, vjust = 1.5), aes(label = label, x = x, y = y, hjust = hjust, vjust = vjust), col = "black", size = 6) +
-  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
-      legend.position = "none",
-    text = element_text(size = 20))
-
-png("figures/TCGAvsGEO_GSEA_NES.png")
-fgsea.plot
-dev.off()
-
-cor(comb.fgsea$NES.TCGA, comb.fgsea$NES.GEO)
-# [1] 0.3988817
-cor(comb.fgsea[comb.fgsea$Signif != "None", ]$NES.TCGA, comb.fgsea[comb.fgsea$Signif != "None", ]$NES.GEO, use = "complete")
-# [1] 0.5000755
-
-table(sign(comb.fgsea$NES.TCGA) == sign(comb.fgsea$NES.GEO), comb.fgsea$Signif)
-prop.table(table(sign(comb.fgsea$NES.TCGA) == sign(comb.fgsea$NES.GEO), comb.fgsea$Signif), margin = 2)
-prop.table(table(sign(comb.fgsea$NES.TCGA) == sign(comb.fgsea$NES.GEO), comb.fgsea$Signif != "None"), margin = 2)
-
-## hipathia
-load("results/TCGA_PRAD/hipathia.res.Rdata")
-comb.hipathia <- inner_join(hip.comp_prad, hip.comp_geo, by = "name", suffix = c(".TCGA", ".GEO"))   %>%
-  mutate(Signif = ifelse(!is.na(FDRp.value.TCGA) & FDRp.value.TCGA  < 0.05, ifelse(FDRp.value.GEO < 0.05, "Both", "TCGA"),
-                              ifelse(FDRp.value.GEO < 0.05, "GEO", "None")))
-
-
-#
-hip.plot <- ggplot(comb.hipathia, aes(x = statistic.TCGA, y = statistic.GEO, col = Signif)) +
-  geom_point() +
-  theme_bw()  +
-  scale_color_manual(name = "Significance", values = c("#004D40", "#1E88E5", "#9E9E9E", "#FFC107")) +
-  ggtitle("Hipathia") +
-  xlab("U statistic in TCGA") +
-  ylab("U statistic in GEO") +
-  geom_text(data =  data.frame(label = sprintf("N = %d \n r = %.2f", nrow(comb.hipathia), cor(comb.hipathia$statistic.TCGA, comb.hipathia$statistic.GEO)),
-   x = -Inf, y = Inf, hjust = -0.3, vjust = 1.5), aes(label = label, x = x, y = y, hjust = hjust, vjust = vjust), col = "black", size = 6) +
-  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
-    text = element_text(size = 20))
-
-png("figures/TCGAvsGEO_hipathia_stat.png")
-hip.plot
-dev.off()
-
-cor(comb.hipathia$statistic.TCGA, comb.hipathia$statistic.GEO)
-# [1] 0.234694
-cor(comb.hipathia[comb.hipathia$Signif != "None", ]$statistic.TCGA, comb.hipathia[comb.hipathia$Signif != "None", ]$statistic.GEO, use = "complete")
-# [1] 0.4226619
-
-table(sign(comb.hipathia$statistic.TCGA) == sign(comb.hipathia$statistic.GEO), comb.hipathia$Signif)
-prop.table(table(sign(comb.hipathia$statistic.TCGA) == sign(comb.hipathia$statistic.GEO), comb.hipathia$Signif), margin = 2)
-prop.table(table(sign(comb.hipathia$statistic.TCGA) == sign(comb.hipathia$statistic.GEO), comb.hipathia$Signif != "None"), margin = 2)
-
-legend <- get_legend(
-  # create some space to the left of the legend
-  hip.plot + theme(legend.box.margin = margin(0, 0, 0, 12),
-                    text = element_text(size = 25))+
-                    guides(color = guide_legend(override.aes = list(size = 8)))
-)
-
-
-png("figures/TCGAvsGEO_panel.png", width = 950, height = 775)
-plot_grid(
-  plot_grid(gene.plot, fgsea.plot, hip.plot + theme(legend.position = "none"), path.plot, ncol = 2, labels = LETTERS[1:4], label_size = 20),
-  legend, ncol = 2, rel_widths = c(5, 1))
-dev.off()
 
 #
 # ## Compare values between TCGA and GEO
@@ -437,9 +235,148 @@ pred.geo2 <- predict(svm_gleason_geo, prad.feat.filt)
 table(prediction = pred.geo2 , real = se.filt$gleason )
 
 ## Selected features
-sel_paths <- subset(tab.paths, adj.P.Val < 0.05)
+sel_paths <- subset(tab.paths_geo , adj.P.Val < 0.05)
 svm_gleason_geo_filt <- svm(gleason ~ ., df_svm[, c("gleason", gsub(":", "_", rownames( sel_paths)))])
 pred.geo2_filt <- predict(svm_gleason_geo_filt, prad.feat.filt)
 table(prediction = pred.geo2_filt , real = se.filt$gleason )
 
-save(svm_gleason_geo, svm_gleason_geo_filt, file = "results/TCGA_PRAD/svm_model_geo.Rdata")
+
+## GSVA
+rownames(geo_gsva) <- gsub(":", "_", rownames(geo_gsva))
+
+df_svm_gsva <-  data.frame(gleason = factor(se.filt$gleason), t(geo_gsva))
+svm_gleason_geo_gsva <- svm(gleason ~ ., df_svm_gsva)
+pred.geo_gsva <- predict(svm_gleason_geo_gsva, t(geo_gsva))
+table(prediction = pred.geo_gsva , real = se.filt$gleason )
+
+sel_paths2 <- subset(tab.gsva_geo  , adj.P.Val < 0.05)
+svm_gleason_geo_gsva_filt <- svm(gleason ~ ., df_svm_gsva[, c("gleason", gsub(":", "_", rownames( sel_paths2)))])
+pred.geo2_gsva_filt <- predict(svm_gleason_geo_gsva_filt,t(geo_gsva))
+table(prediction = pred.geo2_gsva_filt , real = se.filt$gleason )
+
+## Train SVM to classify gleason in this test
+
+runSVM_Predicition <- function(df, train_ids, feats, true_vals){
+  svm_gleason <- svm(gleason ~ ., class.weights = c(Low = 0.1, High = 0.9), df[train_ids, ])
+  pred <- predict(svm_gleason, feats[-train_ids, ])
+  table(prediction = pred, real = true_vals[-train_ids] )
+}
+
+run_svm_iteration <- function(df_path, df_gsva, feats_path, feats_gsva, true_vals){
+
+  train_high <- sample(which(true_vals == "High"), size = sum(true_vals == "High")*0.7)
+  train_low <- sample(which(true_vals == "Low"), size = sum(true_vals == "Low")*0.7)
+  train_ids <- c(train_high, train_low)
+
+  tab_path <- runSVM_Predicition(df_path, train_ids, feats_path, true_vals)
+  tab_gsva <- runSVM_Predicition(df_gsva, train_ids, feats_gsva, true_vals)
+  list(path = tab_path, gsva = tab_gsva)
+}
+
+computeAccuracies <- function(tab){
+  acc <- (tab[1] + tab[4])/sum(tab)
+  SN <- tab[1, 1] / sum(tab[, 1])
+  SP <- tab[2, 2] / sum(tab[, 2])
+  c(Accuracy = acc, SN = SN, SP = SP)
+}
+
+rownames(geo_gsva) <- gsub(":", "_", rownames(geo_gsva))
+colnames(prad.feat.filt) <- gsub(":", "_", colnames( prad.feat.filt))
+
+### All features
+
+df_svm_paths <- data.frame(gleason = factor(se.filt$gleason), prad.feat.filt)
+df_svm_gsva <-  data.frame(gleason = factor(se.filt$gleason), t(geo_gsva))
+
+
+set.seed(1)
+iter_all <- parallel::mclapply(seq_len(50), function(i)  run_svm_iteration(df_svm_paths, df_svm_gsva, prad.feat.filt, t(geo_gsva), se.filt$gleason ), mc.cores = 10)
+acc_path_all <- sapply(iter_all, function(x) computeAccuracies(x$path))
+acc_gsva_all <- sapply(iter_all, function(x) computeAccuracies(x$gsva))
+
+rowMeans(acc_path_all)
+rowMeans(acc_gsva_all)
+
+### Significant features in TCGA
+tcga_paths <- gsub(":", "_", subset(comb_paths, Signif %in% c("TCGA", "Both"))$category)
+tcga_gsva <- gsub(":", "_", subset(comb.gsva, Signif %in% c("TCGA", "Both"))$category)
+
+df_svm_paths_tcga <- df_svm_paths[, c("gleason", tcga_paths)]
+df_svm_gsva_tcga <- df_svm_gsva[, c("gleason", tcga_gsva)]
+
+set.seed(1)
+iter_tcga <- parallel::mclapply(seq_len(50), function(i)  run_svm_iteration(df_svm_paths_tcga, df_svm_gsva_tcga, prad.feat.filt[, tcga_paths], t(geo_gsva)[, tcga_gsva], se.filt$gleason ), mc.cores = 10)
+acc_path_tcga <- sapply(iter_tcga, function(x) computeAccuracies(x$path))
+acc_gsva_tcga <- sapply(iter_tcga, function(x) computeAccuracies(x$gsva))
+
+rowMeans(acc_path_tcga)
+rowMeans(acc_gsva_tcga)
+
+class_df <- rbind(data.frame(t(acc_path_all), Features = "All", Model = "GO + KEGG model"),
+                  data.frame(t(acc_gsva_all), Features = "All", Model = "GSVA"),
+                  data.frame(t(acc_path_tcga), Features = "TCGA", Model = "GO + KEGG model"),
+                  data.frame(t(acc_gsva_tcga), Features = "TCGA", Model = "GSVA")) %>%
+                  as_tibble()
+
+
+
+png("figures/GEO_classification.png")
+class_df %>%
+  gather(Measure, Value, 1:3) %>%
+  ggplot(class_df, aes(x = Measure, y = Value, color = Model)) +
+    geom_boxplot() +
+    theme_bw() +
+    facet_wrap(~ Features)
+dev.off()
+
+summary(lm(SN ~ Model, class_df, subset = Features == "All"))
+summary(lm(SP ~ Model, class_df, subset = Features == "All"))
+summary(lm(Accuracy ~ Model, class_df, subset = Features == "All"))
+
+summary(lm(SN ~ Model, class_df, subset = Features == "TCGA"))
+summary(lm(SP ~ Model, class_df, subset = Features == "TCGA"))
+summary(lm(Accuracy ~ Model, class_df, subset = Features == "TCGA"))
+
+### Gene sets with similar training in both
+sel_paths <- gsub(":", "_", subset(path_df, abs(cor_path) > 0.7)$path)
+
+df_svm_paths_sel <- df_svm_paths[, c("gleason", sel_paths)]
+df_svm_gsva_sel <- df_svm_gsva[, c("gleason", sel_paths)]
+
+set.seed(1)
+iter_sel <- parallel::mclapply(seq_len(50), function(i)  run_svm_iteration(df_svm_paths_sel, df_svm_gsva_sel, prad.feat.filt[, sel_paths], t(geo_gsva)[, sel_paths], se.filt$gleason ), mc.cores = 10)
+acc_path_sel <- sapply(iter_sel, function(x) computeAccuracies(x$path))
+acc_gsva_sel <- sapply(iter_sel, function(x) computeAccuracies(x$gsva))
+
+rowMeans(acc_path_sel)
+rowMeans(acc_gsva_sel)
+
+
+
+
+
+train_high <- sample(which(se.filt$gleason == "High"), size = sum(se.filt$gleason == "High")*0.7)
+train_low <- sample(which(se.filt$gleason == "Low"), size = sum(se.filt$gleason == "Low")*0.7)
+
+df_svm <- data.frame(gleason = factor(se.filt$gleason), prad.feat.filt)
+svm_gleason_geo <- svm(gleason ~ ., class.weights = c(Low = 0.1, High = 0.9), df_svm[c(train_high, train_low), ])
+pred.geo2 <- predict(svm_gleason_geo, prad.feat.filt[-c(train_high, train_low), ])
+table(prediction = pred.geo2 , real = se.filt[, -c(train_high, train_low)]$gleason )
+
+df_svm_gsva <-  data.frame(gleason = factor(se.filt$gleason), t(geo_gsva))
+svm_gleason_geo_gsva <- svm(gleason ~ ., class.weights = c(Low = 0.1, High = 0.9), df_svm_gsva[c(train_high, train_low), ])
+pred.geo_gsva <- predict(svm_gleason_geo_gsva, t(geo_gsva)[-c(train_high, train_low), ])
+table(prediction = pred.geo_gsva , real = se.filt[, -c(train_high, train_low)]$gleason )
+
+## Selected features
+sel_paths <- subset(tab.paths_tcga , adj.P.Val < 0.05)
+svm_gleason_geo_filt <- svm(gleason ~ ., class.weights = c(Low = 0.1, High = 0.9), df_svm[c(train_high, train_low), c("gleason", gsub(":", "_", rownames( sel_paths)))])
+pred.geo2_filt <- predict(svm_gleason_geo_filt, prad.feat.filt[-c(train_high, train_low), ])
+table(prediction = pred.geo2_filt , real = se.filt[, -c(train_high, train_low)]$gleason )
+
+sel_paths2 <- subset(tab.gsva_tcga, adj.P.Val < 0.05)
+svm_gleason_geo_gsva_filt <- svm(gleason ~ .,  class.weights = c(Low = 0.1, High = 0.9), df_svm_gsva[c(train_high, train_low), c("gleason", gsub(":", "_", rownames( sel_paths2)))])
+pred.geo2_gsva_filt <- predict(svm_gleason_geo_gsva_filt,t(geo_gsva)[-c(train_high, train_low), ])
+table(prediction = pred.geo2_gsva_filt , real = se.filt[, -c(train_high, train_low)]$gleason  )
+
+save(svm_gleason_geo, svm_gleason_geo_filt, svm_gleason_geo_gsva_filt, svm_gleason_geo_gsva, file = "results/TCGA_PRAD/svm_model_geo.Rdata")

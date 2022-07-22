@@ -35,21 +35,32 @@ library(corrplot)
 library(qrnn)
 
 genes <- read.table("../results/GTEx_coding/input_genes.txt")$V1
-path.map <- read.table("../results/GTEx_coding/go_kegg_final_gene_map.tsv", header = TRUE)
+path.map <- read.table("../results/GTEx_coding/go_kegg_filt3_gene_map.tsv", header = TRUE)
 
-gtex.feat <- read.table("../results/GTEx_coding/paths_filt2_full_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
-paths <- read.table("../results/GTEx_coding/paths_filt2_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
+gtex.feat <- read.table("../results/GTEx_coding/paths_filt3_full_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+paths <- read.table("../results/GTEx_coding/paths_filt3_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
 paths.vec <- as.character(paths[, 1])
 colnames(gtex.feat) <- paths.vec
 
-weights <- h5read("../results/GTEx_coding/paths_filt2_full_v3.6/model_trained/model_weights.h5","weights_paths")
+weights <- h5read("../results/GTEx_coding/paths_filt3_full_v3.6/model_trained/model_weights.h5","weights_paths")
 rownames(weights) <- paths.vec
 colnames(weights) <- genes
+
+weights_pre <- h5read("../results/GTEx_coding/paths_filt3_pre_v3.8/model_trained/model_weights.h5","weights_paths")
+rownames(weights_pre) <- paths.vec
+colnames(weights_pre) <- genes
 
 gtex.vst <- loadHDF5SummarizedExperiment("../results/GTEx/", prefix = "vst_all_")
 
 weights_list <- lapply(letters[1:5], function(submod){
-  w <- h5read(paste0("../results/GTEx_coding/paths_filt2_full_v3.6", submod, "/model_trained/model_weights.h5"),"weights_paths")
+  w <- h5read(paste0("../results/GTEx_coding/paths_filt3_full_v3.6", submod, "/model_trained/model_weights.h5"),"weights_paths")
+  rownames(w) <- paths.vec
+  colnames(w) <- genes
+  w
+})
+
+weights_pre_list <- lapply(letters[1:5], function(submod){
+  w <- h5read(paste0("../results/GTEx_coding/paths_filt3_pre_v3.8", submod, "/model_trained/model_weights.h5"),"weights_paths")
   rownames(w) <- paths.vec
   colnames(w) <- genes
   w
@@ -86,10 +97,12 @@ path_w_mat <- sapply(weights_list, function(m) m["path:hsa00430", subset(path.ma
 path_w_mat <- cbind(path_w, path_w_mat )
 colnames(path_w_mat) <- c("main", letters[1:5])
 
-ini_w <-  h5read("../results/GTEx_coding/paths_filt2_full_v3.6/hsa00430_ini_weights.h5","weights_paths")
+path_w_pre <- weights_pre["path:hsa00430", subset(path.map, PathwayID == "path:hsa00430")$Symbol]
+path_w_pre_mat <- sapply(weights_pre_list, function(m) m["path:hsa00430", subset(path.map, PathwayID == "path:hsa00430")$Symbol])
+path_w_pre_mat <- cbind(path_w_pre, path_w_pre_mat )
+colnames(path_w_pre_mat) <- 1:6
 
-path_w_comb <- cbind(path_w_mat, t(ini_w))
-colnames(path_w_comb) <- c(colnames(path_w_mat), 1:10)
+path_w_comb <- cbind(path_w_mat, path_w_pre_mat)
 rownames(path_w_comb)  <- mapIds(org.Hs.eg.db, rownames(path_w_comb)  , keytype= "ENSEMBL", column="SYMBOL")
 
 myBreaks <- c(seq(-max(abs(path_w_comb)), 0, length.out=ceiling(100/2) + 1),
@@ -103,7 +116,7 @@ We observe that the trainings are grouped in two clusters, depending in the sign
 
 
 ```{r}
-path_w_comb[, c(3, 5, 8, 12, 14)] <- -path_w_comb[, c(3, 5, 8, 12, 14)]
+path_w_comb[, c(2, 6, 11, 12)] <- -path_w_comb[, c(2, 6, 11, 12)]
 
 myBreaks <- c(seq(-max(abs(path_w_comb)), 0, length.out=ceiling(100/2) + 1),
               seq(max(abs(path_w_comb))/100, max(abs(path_w_comb)), length.out=floor(100/2)))
@@ -111,14 +124,14 @@ myBreaks <- c(seq(-max(abs(path_w_comb)), 0, length.out=ceiling(100/2) + 1),
 pheatmap(path_w_comb, breaks = myBreaks)
 ```
 
-Models trained up to step 1 converges to similar weights, thus the pathway expression values will be almost identical. More differences are observed for models trained up to step 3 that will be considered later. In order to have a better view of weigths from step one, we will repeat the plot including only models 1 to 10:
+Models trained up to step 1 converges to similar weights, thus the pathway expression values will be almost identical. More differences are observed for models trained up to step 3 that will be considered later. In order to have a better view of weigths from step one, we will repeat the plot including only models 1 to 6:
 
 
 ```{r}
-myBreaks <- c(seq(-max(abs(path_w_comb[, as.character(1:10)])), 0, length.out=ceiling(100/2) + 1),
-              seq(max(abs(path_w_comb[, as.character(1:10)]))/100, max(abs(path_w_comb[, as.character(1:10)])), length.out=floor(100/2)))
+myBreaks <- c(seq(-max(abs(path_w_comb[, as.character(1:6)])), 0, length.out=ceiling(100/2) + 1),
+              seq(max(abs(path_w_comb[, as.character(1:6)]))/100, max(abs(path_w_comb[, as.character(1:6)])), length.out=floor(100/2)))
 
-pheatmap(path_w_comb[, as.character(1:10)], breaks = myBreaks)
+pheatmap(path_w_comb[, as.character(1:6)], breaks = myBreaks)
 ```
 
 In step 1, genes of the FMO family (FMO1, FMO2, FMO3 and FMO4) and GGT5 have a strong positive weight while GAD1 and GAD2 have a strong negative weight. Next, we will check how these genes are related:

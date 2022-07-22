@@ -1,0 +1,492 @@
+---
+title: "Exploration of DNN training in cancer"
+author: "Carlos Ruiz"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    theme: united
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Introduction
+
+We have developed an approach to group the gene expression data into pathway expression values, using a deep neural network. Pathway expression values aim to represent the expression of its composing genes and to be representative of the state of the tissue. In this document, we will explore how the dataset used to train the network affects how the pathways are represented. To do so, we trained the model using the GTEx project v8 (7729 samples and 19,423 genes) and TCGA to encode 1322 pathways.
+
+
+```{r}
+## Load libraries
+library(tidyverse)
+library(HDF5Array)
+library(SummarizedExperiment)
+library(org.Hs.eg.db)
+library(corrplot)
+library(GOfuncR)
+
+## Load data
+genes <- read.table("../results/GTEx_coding/input_genes.txt")$V1
+path.map <- read.table("../results/GTEx_coding/go_kegg_final_gene_map.tsv", header = TRUE)
+
+paths <- read.table("../results/GTEx_coding/paths_filt3_full_v3.6/model_trained/pathways_names.txt", header = TRUE)
+paths.vec <- as.character(paths[, 1])
+
+weights_gtex <- h5read("../results/GTEx_coding/paths_filt3_full_v3.6/model_trained/model_weights.h5","weights_paths")
+rownames(weights_gtex) <- paths.vec
+colnames(weights_gtex) <- genes
+
+weights_gtex_pre <- h5read("../results/GTEx_coding/paths_filt3_pre_v3.8/model_trained/model_weights.h5","weights_paths")
+rownames(weights_gtex_pre) <- paths.vec
+colnames(weights_gtex_pre) <- genes
+
+
+weights_tcga <- h5read("../results/TCGA_coding_all/paths_filt3_full_v3.6/model_trained/model_weights.h5","weights_paths")
+rownames(weights_tcga) <- paths.vec
+colnames(weights_tcga) <- genes
+
+weights_tcga_pre <- h5read("../results/TCGA_coding_all/paths_filt3_pre_v3.8/model_trained/model_weights.h5","weights_paths")
+rownames(weights_tcga_pre) <- paths.vec
+colnames(weights_tcga_pre) <- genes
+
+gtex.feat <- read.table("../results/TCGA_all/paths_filt3_full_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+tcga.feat <- read.table("../results/TCGA_all_TCGA/paths_filt3_full_v3.6/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+colnames(gtex.feat) <- colnames(tcga.feat) <- paths.vec
+
+gtex.feat.pre <- read.table("../results/TCGA_all/paths_filt3_pre_v3.8/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+tcga.feat.pre <- read.table("../results/TCGA_all_TCGA/paths_filt3_pre_v3.8/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+colnames(gtex.feat.pre) <- colnames(tcga.feat.pre) <- paths.vec
+
+gtex.vst <- loadHDF5SummarizedExperiment("../results/GTEx/", prefix = "vst_all_")
+tcga.vst <- loadHDF5SummarizedExperiment("../results/TCGA_gexp_combat_coding/", prefix = "vsd_norm")
+```
+
+
+```{r}
+path.N <- table(path.map$PathwayID) %>%
+  data.frame()
+
+readPathways <- function(model, sufix, path_name){
+  lapply(sufix, function(i){
+    path <- paste0("../results/TCGA_all_TCGA/", model, i, "/model_features/prune_low_magnitude_dense.tsv")
+    tab <- read.table(path, header = TRUE)
+    tab <- data.matrix(tab)
+    colnames(tab) <- path_name
+    tab
+  })
+}
+
+readPathways2 <- function(model, sufix, path_name){
+  lapply(sufix, function(i){
+    path <- paste0("../results/GTEx_coding/", model, i, "/model_features/prune_low_magnitude_dense.tsv")
+    tab <- read.table(path, header = TRUE)
+    tab <- data.matrix(tab)
+    colnames(tab) <- path_name
+    tab
+  })
+}
+
+pathwayCorr <- function(path_list, col){
+  path_mat <- sapply(path_list, function(x) x[, col])
+  cors <- cor(path_mat)
+  cors[upper.tri(cors)]
+}
+
+
+makeDFsum <- function(cors, mod_name){
+  df <- data.frame(path = colnames(cors), minCor = colMins(abs(cors)), medCor = colMedians(abs(cors))) %>%
+    mutate(class = ifelse(minCor > 0.8, "High", ifelse(minCor < 0.3, "low", "intermediate")),
+            model = mod_name) %>%
+            as_tibble()
+
+}
+
+# path_vals_tcga <-  readPathways("paths_filt3_full_v3.6", sufix = c("", letters[1:5]), path_name = paths.vec)
+#
+# ## Define replicability
+# tcga.cors <- sapply(paths.vec, pathwayCorr, path_list = path_vals_tcga)
+# colnames(tcga.cors) <- paths.vec
+# df.tcga <- makeDFsum(tcga.cors,"full") %>%
+#   left_join(data.frame(path.N) %>% mutate(path = Var1) %>% dplyr::select(-Var1), by = "path") %>%
+#   mutate(Database = ifelse(substring(path, 1, 2) == "GO", "GO", "KEGG"))
+#
+# #
+# path_vals_gtex <-  readPathways2("paths_filt3_full_v3.6", sufix = c("", letters[1:5]), path_name = paths.vec)
+#
+# ## Define replicability
+# gtex.cors <- sapply(paths.vec, pathwayCorr, path_list = path_vals_gtex)
+# colnames(gtex.cors) <- paths.vec
+# df.gtex <- makeDFsum(gtex.cors,"full") %>%
+#   left_join(data.frame(path.N) %>% mutate(path = Var1) %>% dplyr::select(-Var1), by = "path") %>%
+#   mutate(Database = ifelse(substring(path, 1, 2) == "GO", "GO", "KEGG"))
+
+```
+
+# Correlation between the models
+
+We defined the pathway activity scores in the TCGA using the model trained in GTEx and the model trained in TCGA. Next, we compared the pathway activity scores obtained with the two models, both after pre-training and after the full training:
+
+```{r}
+weight_cors <- sapply(seq_len(nrow(weights_tcga)), function(i){
+
+  # Gtex
+  p_g <- weights_gtex[i, ]
+  p_g <- p_g[p_g != 0]
+
+  # TCGA
+  p_t <- weights_tcga[i, ]
+  p_t <- p_t[p_t != 0]
+
+  cor(p_g, p_t)
+})
+
+path_cors <- sapply(seq_len(ncol(gtex.feat)), function(i){
+
+  cor(gtex.feat[, i], tcga.feat[, i])
+})
+
+path_cors_pre <- sapply(seq_len(ncol(gtex.feat.pre)), function(i){
+
+  cor(gtex.feat.pre[, i], tcga.feat.pre[, i])
+})
+
+path_df <- tibble(path = paths.vec, cor_weight = weight_cors, cor_path = path_cors,
+                  cor_path_pre = path_cors_pre)
+  #                 %>%
+  # left_join(df.tcga, by = "path") %>%
+  # left_join(mutate(df.gtex, minCor_gtex = minCor) %>% dplyr::select(minCor_gtex, path), by = "path")
+
+```
+
+```{r}
+path_df %>%
+  ggplot(aes(x = abs(cor_path))) +
+  geom_histogram() +
+  xlab("Pathway correlation after full training") +
+  theme_bw()
+
+```
+
+In general, pathway computed with the GTEx and the TCGA models are correlated. Thus, `r sprintf("%.2f", mean(abs(path_df$cor_path) > 0.7)*100)`% and `r sprintf("%.2f", mean(abs(path_df$cor_path) > 0.3)*100)`% of pathways have a correlation between models higher than 0.7 and 0.3 respectively.
+
+Next, we evaluated whether there were differences between the pathway activity scores computed after the first step and after the full training. Pathway activity scores computed after the first step aims to maximize the variance of the included genes and represent the correlation of the genes. In contrast, pathway activity scores computed after the full training aims to maximize the representativity of the pathway versus the whole gene expression matrix.
+
+```{r}
+path_df %>%
+  mutate(High = ifelse(path %in% c("GO:0070076", "GO:0030575", "GO:0043101", "GO:1901030"), path, "Other")) %>%
+  ggplot(aes(x = abs(cor_path_pre), y = abs(cor_path), color = High)) +
+  geom_point() +
+  theme_bw() +
+  scale_color_manual(values = c("darkgreen", "blue", "orange", "brown", "grey")) +
+  xlab("Pathway correlation after step 1") +
+  ylab("Pathway correlation after full training")
+
+```
+
+We observed a high concordance between the correlation of the pathways after step 1 and after full training (r = `r sprintf("%.2f", cor(abs(path_df$cor_path), abs(path_df$cor_path_pre)))`). Thus, in general, if the correlation between the pathway genes are different in GTEx and TCGA, the pathway will represent different entities in both datasets. Next, we explore four different cases to better understand the differences in training.
+
+## GO:0070076
+
+The first pathway we explored is the GO:0070076 (regulation of cilium beat frequency). Training using the GTEx or using TCGA arrived to a similar results, either after step 1 or after the full training. We can see this by comparing the weights after step 1:
+
+
+```{r}
+df_h <- data.frame(gtex = weights_gtex_pre["GO:0070076", ], tcga = weights_tcga_pre["GO:0070076", ], gene = colnames(weights_tcga_pre)) %>%
+  filter(gtex != 0 & tcga != 0) %>%
+  mutate(gene = mapIds(org.Hs.eg.db, gene, keytype= "ENSEMBL", column="SYMBOL"))
+df_h %>%  ggplot(aes(x = gtex, y = tcga)) +
+  geom_point() +
+  theme_bw() +
+  geom_text(aes(label = gene),
+    check_overlap = TRUE
+) +
+  ggtitle("GO:0070076 - weights after step 1")
+
+```
+
+We observed a high correlation between the weights after step 1 (r = `r sprintf("%.2f", cor(df_h$gtex, df_h$tcga))`). In both cases, we observe that the genes with higher weights are CFAP43, DNAAF1, CFAP206, CCDC40 and ODAD2.
+
+```{r}
+genes.top <- subset(path.map, PathwayID == "GO:0070076")$Symbol
+genes.top_Symbol <- mapIds(org.Hs.eg.db, genes.top, keytype= "ENSEMBL", column="SYMBOL")
+
+gene_cors.top_gtex <- cor(t(data.matrix(assay(gtex.vst[genes.top, ]))))
+rownames(gene_cors.top_gtex ) <- colnames(gene_cors.top_gtex ) <- genes.top_Symbol
+
+corrplot(gene_cors.top_gtex, method = "number", order = "hclust", main = "GO:0003356 - GTEx")
+
+```
+
+Genes with higher weights form the biggest cluster of high correlated genes in GTEx.
+
+
+```{r}
+gene_cors.top_tcga <- cor(t(data.matrix(assay(tcga.vst[genes.top, ]))))
+rownames(gene_cors.top_tcga ) <- colnames(gene_cors.top_tcga ) <- genes.top_Symbol
+
+corrplot(gene_cors.top_tcga, method = "number", order = "hclust", main = "GO:0070076 - TCGA")
+
+```
+
+The same genes form the same cluster of highly correlated genes in TCGA.
+
+```{r}
+df_h2 <- data.frame(gtex = weights_gtex["GO:0070076", ], tcga = weights_tcga["GO:0070076", ], gene = colnames(weights_tcga_pre)) %>%
+  filter(gtex != 0 & tcga != 0) %>%
+  mutate(gene = mapIds(org.Hs.eg.db, gene, keytype= "ENSEMBL", column="SYMBOL"))
+df_h2 %>%  ggplot(aes(x = gtex, y = tcga)) +
+  geom_point() +
+  theme_bw() +
+  geom_text(aes(label = gene),
+    check_overlap = TRUE
+) +
+  ggtitle("GO:0070076 - weights full training")
+
+```
+
+After full training, the same genes remain with the highest weights. The weigths are even more correlated than before (r = `r sprintf("%.2f", cor(df_h2$gtex, df_h2$tcga))`).
+
+
+All in all, in GO:0070076, the initial pathway activity based on the variance was already the most relevant representation of the pathway. As the gene correlations between these genes were the same in both datasets, the pathway representation is very similar in both models.
+
+## GO:0043101
+
+The second pathway we explored is the GO:0043101 (purine-containing compound salvage). Training using the GTEx arrived at a very different representation than training using TCGA, both after step 1 and after the full training. We can see this by comparing the weights after step 1:
+
+```{r}
+df_path_low2 <- data.frame(gtex_pre = weights_gtex_pre["GO:0043101", ], tcga_pre = weights_tcga_pre["GO:0043101", ], gene = colnames(weights_tcga_pre),
+                          gtex = -weights_gtex["GO:0043101", ], tcga = weights_tcga["GO:0043101", ]) %>%
+              filter(gtex != 0 & tcga != 0) %>%
+              mutate(gene = mapIds(org.Hs.eg.db, gene, keytype= "ENSEMBL", column="SYMBOL"))
+```
+
+```{r}
+df_path_low2 %>%
+  ggplot(aes(x = gtex_pre, y = tcga_pre)) +
+  geom_point() +
+  theme_bw() +
+  geom_text(aes(label = gene),
+    check_overlap = TRUE
+) +
+  ggtitle("GO:0043101 - weights after step 1") +
+  xlab("GTEx") +
+  ylab("TCGA")
+
+```
+
+There is a modest  correlation between the weights after step 1 (r = `r sprintf("%.2f", cor(df_path_low2$gtex_pre, df_path_low2$tcga_pre))`). While some genes have high positive weights in both (e.g. AMPD1, ADSL), high negative in both (e.g. DGUOK), high negative in GTEx and high positive in TCGA (e.g. PNP and PGM2), or high weight only in GTEx (e.g. AMPD2), or only in TCGA (PRTFDC1).
+
+
+```{r}
+genes.low2 <- subset(path.map, PathwayID == "GO:0043101")$Symbol
+genes.low2_Symbol <- mapIds(org.Hs.eg.db, genes.low2, keytype= "ENSEMBL", column="SYMBOL")
+gene_cors.low2_gtex <- cor(t(data.matrix(assay(gtex.vst[genes.low2, ]))))
+rownames(gene_cors.low2_gtex ) <- colnames(gene_cors.low2_gtex ) <- genes.low2_Symbol
+corrplot(gene_cors.low2_gtex, method = "number", order = "hclust", main = "GO:0043101 - GTEx")
+```
+
+In GTEx, a group of genes with high negative weights in GTEx (DGUOK, PNP, PGM2 or AMPD2) are positively correlated, while a second group of with high positive weights (ADSL or AMPD1) are negatively correlated with the first group of genes.
+
+
+```{r}
+gene_cors.low2_tcga <- cor(t(data.matrix(assay(tcga.vst[genes.low2, ]))))
+rownames(gene_cors.low2_tcga ) <- colnames(gene_cors.low2_tcga ) <- genes.low2_Symbol
+corrplot(gene_cors.low2_tcga, method = "number", order = "hclust", main = "GO:0043101 - TCGA")
+```
+
+In TCGA, a group of genes with high negative weights in TCGA (DGUOK and PRTFDC1) are positively correlated, while a second group of with high positive weights (ADSL, AMPD1, PNP and PGM2) are negatively correlated with the first group of genes. Thus, the differences in weights after step 1 correspond to different correlations between the pathway genes.
+
+```{r}
+df_path_low2 %>%
+  ggplot(aes(x = gtex, y = tcga)) +
+  geom_point() +
+  theme_bw() +
+  geom_text(aes(label = gene),
+    check_overlap = TRUE
+) +
+  ggtitle("GO:0043101 - weights full training")
+
+```
+
+The correlation between the weights of GTEx and TCGA models after full training was very low (r = `r sprintf("%.2f", cor(df_path_low2$gtex, df_path_low2$tcga))`). Discrepancies between the models are due to genes having high weights in both models but with different sign. These discrepancies were defined in step 1 and are preserved in full training either in GTEx:
+
+
+```{r}
+df_path_low2 %>%
+  ggplot(aes(x = gtex_pre, y = gtex)) +
+  geom_point() +
+  theme_bw() +
+  geom_text(aes(label = gene),
+    check_overlap = TRUE
+) +
+xlab("Weights step 1") +
+ylab("Weights full training 1") +
+  ggtitle("GO:0043101 - weights in GTEx")
+```
+
+Or in TCGA:
+
+```{r}
+df_path_low2 %>%
+  ggplot(aes(x = tcga_pre, y = tcga)) +
+  geom_point() +
+  theme_bw() +
+  geom_text(aes(label = gene),
+    check_overlap = TRUE
+) +
+xlab("Weights step 1") +
+ylab("Weights full training 1") +
+  ggtitle("GO:0043101 - weights in TCGA")
+```
+
+## GO:0038065
+
+The third pathway we explored is the GO:0038065 (nuclear body organization). Training using the GTEx arrived at a similar representation than training using TCGA after step 1, but after full training the representation differed. We will start by comparing the weights after step 1:
+
+```{r}
+df_path_low <- data.frame(gtex_pre = -weights_gtex_pre["GO:2000738", ], tcga_pre = -weights_tcga_pre["GO:2000738", ], gene = colnames(weights_tcga_pre),
+                          gtex = weights_gtex["GO:2000738", ], tcga = -weights_tcga["GO:2000738", ]) %>%
+              filter(gtex != 0 & tcga != 0) %>%
+              mutate(gene = mapIds(org.Hs.eg.db, gene, keytype= "ENSEMBL", column="SYMBOL"))
+```
+
+```{r}
+df_path_low %>%
+  ggplot(aes(x = gtex_pre, y = tcga_pre)) +
+  geom_point() +
+  theme_bw() +
+  geom_text(aes(label = gene),
+    check_overlap = TRUE
+) +
+  ggtitle("GO:0038065 - weights after step 1") +
+  xlab("GTEx") +
+  ylab("TCGA")
+
+```
+
+There is a high correlation between the weights after step 1 (r = `r sprintf("%.2f", cor(df_path_low$gtex_pre, df_path_low$tcga_pre))`). Thus, some genes with high positive weights in both (e.g. SF1, ETS1 or PML), while others had high negative weights in both (e.g. HABP4, CELF3 or SUMO1).
+
+
+```{r}
+genes.low <- subset(path.map, PathwayID == "GO:0038065")$Symbol
+genes.low_Symbol <- mapIds(org.Hs.eg.db, genes.low, keytype= "ENSEMBL", column="SYMBOL")
+gene_cors.low_gtex <- cor(t(data.matrix(assay(gtex.vst[genes.low, ]))))
+rownames(gene_cors.low_gtex ) <- colnames(gene_cors.low_gtex ) <- genes.low_Symbol
+corrplot(gene_cors.low_gtex, method = "number", order = "hclust", main = "GO:2000696 - GTEx")
+```
+
+
+In GTEx, genes with positive weights (SF1, ETS1 and PML) were positively correlated and these genes were negatively correlated with genes with negative weights (HABP4, CELF3 and SUMO1)
+
+
+```{r}
+gene_cors.low_tcga <- cor(t(data.matrix(assay(tcga.vst[genes.low, ]))))
+rownames(gene_cors.low_tcga ) <- colnames(gene_cors.low_tcga ) <- genes.low_Symbol
+corrplot(gene_cors.low_tcga, method = "number", order = "hclust", main = "GO:2000696 - TCGA")
+```
+
+In TCGA, these genes show similar correlations.
+
+```{r}
+df_path_low %>%
+  ggplot(aes(x = gtex, y = tcga)) +
+  geom_point() +
+  theme_bw() +
+  geom_text(aes(label = gene),
+    check_overlap = TRUE
+) +
+  ggtitle("GO:0038065 - weights full training")
+
+```
+
+The correlation between the weights of GTEx and TCGA models after full training was very low (r = `r sprintf("%.2f", cor(df_path_low$gtex, df_path_low$tcga))`), meaning that the model considered that different genes were relevant for the pathway in GTEx and TCGA:
+
+```{r}
+df_path_low %>%
+  as_tibble() %>%
+  gather(Run, Weight, c(1:2, 4:5)) %>%
+  mutate(Dataset = ifelse(grepl("gtex", Run), "GTEx", "TCGA"),
+        Step = ifelse(grepl("pre", Run), "Step 1", "Full training"),
+        Step = factor(Step, levels = c("Step 1", "Full training")),
+        Gene = ifelse(gene %in% c("SP7", "RBM24", "TCF15", "SOX6", "SOX5", "TGFB2"), gene, "Other"),
+        Gene = factor(Gene, levels =  c("SP7", "RBM24", "TCF15", "SOX6", "SOX5", "TGFB2", "Other"))) %>%
+  ggplot(aes(x = Step, y = Weight, group = gene, color = Gene)) +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  facet_grid(~ Dataset) +
+  scale_color_manual(values = c("red","blue", "green", "brown", "black", "orange", "grey"))
+```
+
+The previous plot show the weights after step 1 and after full training for GTEx and TCGA of the most relevant genes for any of the models.
+
+The most relevant genes in GTEx are AFF2, FAM118B, USPL1 and WRAP53. The four genes have improved their importance after the full training. While FAM118B and WRAP53 are also relevant in TCGA model, AFF2 and USPL1 have less relevance. AFF2 is a transcriptional factor while USPL1 is a SUMO-specific isopeptidase involved in protein desumoylation and none of the genes have been described to play a role in cancer. On the other hand, WRAP53, a component of the telomerase complex and which was identified as relevant in both models, has been associated with colon cancer (PMID: 30175821).
+
+In TCGA, the most relevant genes were ZPR1, SF1, SUMO1 and FAM118B. ZPR1 is a zinc-finger protein which regulates cell cycle progression. SF1 encodes a protein that participates in splicing. SUMO1 encodes an ubiquitin-like protein which can be added to proteins to regulate cellular processes. These genes relevant in TCGA but not in GTEx were associated with breast cancer ( PMID: 30214308 ), intestinal polyp incidence (PMID: 33202710) or cancer progression (PMID: 29484374).
+
+As a conclussion, in this pathway, although the gene correlations are similar in both datasets, the model based in GTEx data is increasing the weight of genes associated with normal cell functions, while the model based in TCGA is prioritizing genes associated with cancer progression.
+
+
+## GO:1901030
+
+The last pathway we explored is the GO:1901030 (positive regulation of mitochondrial outer membrane permeabilization involved in apoptotic signaling pathway). Training using the GTEx arrived at a different representation than training using TCGA after step 1, but to a closer representation after full training. We will start by comparing the weights after step 1:
+
+```{r}
+df_path_med <- data.frame(gtex_pre = weights_gtex_pre["GO:1901030", ], tcga_pre = weights_tcga_pre["GO:1901030", ], gene = colnames(weights_tcga_pre),
+                          gtex = weights_gtex["GO:1901030", ], tcga = weights_tcga["GO:1901030", ]) %>%
+              filter(gtex != 0 & tcga != 0) %>%
+              mutate(gene = mapIds(org.Hs.eg.db, gene, keytype= "ENSEMBL", column="SYMBOL"))
+```
+
+```{r}
+df_path_med %>%
+  ggplot(aes(x = gtex_pre, y = tcga_pre)) +
+  geom_point() +
+  theme_bw() +
+  geom_text(aes(label = gene),
+    check_overlap = TRUE
+) +
+  ggtitle("GO:1901030 - weights after step 1") +
+  xlab("GTEx") +
+  ylab("TCGA")
+
+```
+
+After step 1, the weights of GTEx and TCGA models have low correlation (r = `r sprintf("%.2f", cor(df_path_med$gtex_pre, df_path_med$tcga_pre))`). Some genes had high positive weights in both (e.g. BBC3 or GSK3A), while others had high weights in both dataset but with opposite signs (e.g. ZNF205, BOK or GSK3B).
+
+
+```{r}
+genes.med <- subset(path.map, PathwayID == "GO:1901030")$Symbol
+genes.med_Symbol <- mapIds(org.Hs.eg.db, genes.med, keytype= "ENSEMBL", column="SYMBOL")
+gene_cors.med_gtex <- cor(t(data.matrix(assay(gtex.vst[genes.med, ]))))
+rownames(gene_cors.med_gtex ) <- colnames(gene_cors.med_gtex ) <- genes.med_Symbol
+corrplot(gene_cors.med_gtex, method = "number", order = "hclust", main = "GO:1901030 - GTEx")
+```
+
+
+In GTEx, genes with positive weights (BBC3, GSK3A, GSK3B or GZMB) are positively correlated. These genes are also negatively correlated with genes with negative weights (ZNF205 and BOK).
+
+
+```{r}
+gene_cors.med_tcga <- cor(t(data.matrix(assay(tcga.vst[genes.med, ]))))
+rownames(gene_cors.med_tcga ) <- colnames(gene_cors.med_tcga ) <- genes.med_Symbol
+corrplot(gene_cors.med_tcga, method = "number", order = "hclust", main = "GO:1901030 - TCGA")
+```
+
+In TCGA, these genes show different correlation. Thus, BBC3 and GSK3A positively correlated. Nonetheless, in TCGA these genes are positively correlated with ZNF205 and BOK, while they were negatively correlated in GTEx. Similarly, BBC3 and GSK3A are negatively correlated with GSK3B and GZMB, while they were positively correlated in GTEx.
+
+```{r}
+df_path_med %>%
+  ggplot(aes(x = gtex, y = tcga)) +
+  geom_point() +
+  theme_bw() +
+  geom_text(aes(label = gene),
+    check_overlap = TRUE
+) +
+  ggtitle("GO:1901030 - weights full training")
+
+```
+
+After full training, the weights of both model are much more correlated (r = `r sprintf("%.2f", cor(df_path_med$gtex, df_path_med$tcga))`), due to the increase in importance of genes such as BBC3 or GSK3A. After full training, the genes with the most discordant weights have lower importance (e.g. GSK3B or BOK) and even for ZNF205, the sign was change for TCGA.

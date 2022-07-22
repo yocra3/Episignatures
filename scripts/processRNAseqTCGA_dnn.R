@@ -109,6 +109,11 @@ saveHDF5SummarizedExperiment(vst_prad, "results/TCGA_gexp_coding_noPRAD/", prefi
 vst_prad_tum <- vst_prad[, !is.na(vst_prad$paper_Reviewed_Gleason_category)]
 saveHDF5SummarizedExperiment(vst_prad_tum, "results/TCGA_gexp_coding_noPRAD/", prefix = "vsd_norm_prad_tumor")
 
+vst_prad_control <- vst_prad[, vst_prad$sample_type == "Solid Tissue Normal"]
+saveHDF5SummarizedExperiment(vst_prad_control, "results/TCGA_gexp_coding_noPRAD/", prefix = "vsd_norm_prad_control")
+
+
+
 genes <- rownames(vst_train)
 write.table(genes, file =  paste0(gexp_fold_cod2, "input_genes.txt"), quote = FALSE,
             row.names = FALSE, col.names = FALSE)

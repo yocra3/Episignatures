@@ -46,10 +46,10 @@ vignettes/*.pdf
 
 # Report files
 *.html
-
+*.pdf
 # Figures
 *.png
-
+*.tsv
 # Data folders
 data/
 results/

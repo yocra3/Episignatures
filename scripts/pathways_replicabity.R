@@ -19,9 +19,7 @@ library(cowplot)
 
 readPathways <- function(model, sufix, path_name){
   lapply(sufix, function(i){
-    # path <- paste0("results/TCGA_gexp_combat_std/", model, i, "/model_features/prune_low_magnitude_dense.tsv")
-    # path <- paste0("results/TCGA_gexp_combat_coding_std/", model, i, "/model_features/prune_low_magnitude_dense.tsv")
-    path <- paste0("results/TCGA_gexp_coding_noPRAD/", model, i, "/model_features/prune_low_magnitude_dense.tsv")
+    path <- paste0("results/GTEx_coding/", model, i, "/model_features/prune_low_magnitude_dense.tsv")
     tab <- read.table(path, header = TRUE)
     tab <- data.matrix(tab)
     colnames(tab) <- path_name
@@ -32,8 +30,7 @@ readPathways <- function(model, sufix, path_name){
 
 readPathways2 <- function(model, sufix, path_name){
   lapply(sufix, function(i){
-    # path <- paste0("results/TCGA_gexp_combat_std/", model, i, "/model_features/prune_low_magnitude_dense.tsv")
-    path <- paste0("results/TCGA_gexp_coding_noPRAD/", model, i, "/model_features/prune_low_magnitude_dense_1.tsv")
+    path <- paste0("results/GTEx_coding/", model, i, "/model_features/prune_low_magnitude_dense_1.tsv")
     tab <- read.table(path, header = TRUE)
     tab <- data.matrix(tab)
     colnames(tab) <- path_name
@@ -56,8 +53,6 @@ makeDFsum <- function(cors, mod_name){
 
 }
 
-# cancer.keg <- c("hsa04010", "hsa04310", "hsa04350", "hsa04370", "hsa04630", "hsa04024", "hsa04151", "hsa04150", "hsa04110", "hsa04210", "hsa04115", "hsa04510", "hsa04520", "hsa03320")
-
 kegg.map <- read.table("results/preprocess/go_kegg_gene_map.tsv", header = TRUE)
 kegg.N <- table(kegg.map$PathwayID)
 
@@ -77,10 +72,8 @@ kegg.df <- kegg.df %>%
   mutate(pathID = paste0("path:hsa", substring(path, 0, 5)),
           pathName = gsub("^[0-9]*  ", "", path))
 
-# paths <- read.table("results/TCGA_gexp_norm/kegg_filt_v3.2/model_trained/pathways_names.txt", header = TRUE)
-# paths <- read.table("results/TCGA_gexp_combat_coding_std/kegg_filt2_v3.2/model_trained/pathways_names.txt", header = TRUE)
-paths <- read.table("results/TCGA_gexp_coding_noPRAD/comb_paths3_v3.8/model_trained/pathways_names.txt", header = TRUE)
-paths.ini <- read.table("results/TCGA_gexp_coding_noPRAD/comb_paths_v3.6/model_trained/pathways_names.txt", header = TRUE)
+paths <- read.table("results/GTEx_coding/paths_filt2_full_v3.11/model_trained/pathways_names.txt", header = TRUE)
+paths.ini <- read.table("results/GTEx_coding/paths_all_full_v3.11/model_trained/pathways_names.txt", header = TRUE)
 
 paths.vec <- as.character(paths[, 1])
 paths.ini <- as.character(paths.ini[, 1])
@@ -101,27 +94,34 @@ readCors <- function(base, models, paths.name, model.name){
 
 }
 
-all_train <- readCors("comb_paths_v3.6", c("", letters[1:5]), paths.ini, "All pathways") %>%
-  mutate(training = "whole training")
+all_train <- readCors("paths_all_full_v3.11", c("", letters[1:5]), paths.ini, "All gene sets") %>%
+  mutate(training = "Step 1 + step 2 + step 3")
+#
+all_nofrozen <- readCors("paths_all_pretrain_v3.10", c("", letters[1:5]), paths.ini, "All gene sets") %>%
+  mutate(training = "Step 1 + step 3")
 
- all_init <- readCors("comb_paths_v3.8", c("", letters[1:5]), paths.ini, "All pathways") %>%
-  mutate(training = "pretrained")
+all_init <- readCors("paths_all_pretrain_v3.8", c("", letters[1:5]), paths.ini, "All gene sets") %>%
+  mutate(training = "Step 1")
 
 
-# base <- readCors("kegg_filt2_v3.5", c("", letters[1:5]), paths.vec, "Pathway") %>%
-#   mutate(training = "primed")
-base2 <- readCors("comb_paths3_v3.6", c("", letters[1:5]), paths.vec, "Pathway") %>%
-  mutate(training = "primed + pretrained")
-base3 <- readCors("comb_paths3_v3.7", c("", letters[1:5]), paths.vec, "Pathway") %>%
-  mutate(training = "primed + dropout")
-base4 <- readCors("comb_paths3_v3.8", c("", letters[1:5]), paths.vec, "Pathway") %>%
-  mutate(training = "pretrained only")
-base5 <- readCors("comb_paths3_v3.9", c("", letters[1:5]), paths.vec, "Pathway") %>%
-  mutate(training = "primed + pretrained + dropout")
+
+main <- readCors("paths_filt2_full_v3.11", c("", letters[1:5]), paths.vec, "Selected gene sets") %>%
+  mutate(training = "Step 1 + step 2 + step 3")
+drop <- readCors("paths_filt2_full_drop_noprime_v3.7", c("", letters[1:5]), paths.vec, "Selected gene sets") %>%
+  mutate(training = "Dropout")
+pre <- readCors("paths_filt2_pre_v3.8", c("", letters[1:5]), paths.vec, "Selected gene sets") %>%
+  mutate(training = "Step 1")
+drop_full <- readCors("paths_filt2_full_drop_prime_v3.9", c("", letters[1:5]), paths.vec, "Selected gene sets") %>%
+  mutate(training = "Step 2 + dropout")
+
+unfrozen <- readCors("paths_filt2_unfrozen_v3.10", c("", letters[1:5]), paths.vec, "Selected gene sets") %>%
+  mutate(training = "Step 1 + step 3")
+
+
 # post <- readCors("kegg_filt2_v4.2", c("", letters[1:5]), paths.vec, "Pathway + Dense")  %>%
 #   mutate(training = "primed")
-post2 <- readCors("comb_paths3_v4.3", c("", letters[1:5]), paths.vec, "Pathway + Dense")  %>%
-  mutate(training = "primed + pretrained")
+post2 <- readCors("paths_filt2_full_postdense_v4.3", c("", letters[1:5]), paths.vec, "Selected gene sets")  %>%
+  mutate(training = "Gene Set + Dense")
 # post3 <- readCors("kegg_filt2_v4.4", c("", letters[1:5]), paths.vec, "Pathway + Dense")  %>%
 #   mutate(training = "primed + dropout")
 
@@ -137,92 +137,83 @@ readCors2 <- function(base, models, paths.name, model.name){
 }
 # pre <- readCors2("kegg_filt2_v6.1", c("", letters[1:5]), paths.vec, "Dense + Pathway") %>%
 #   mutate(training = "primed")
-pre2 <- readCors2("comb_paths3_v6.2",c("", letters[1:5]), paths.vec, "Dense + Pathway") %>%
-  mutate(training = "primed + pretrained")
+pre2 <- readCors2("paths_filt2_full_predense_v6.2",c("", letters[1:5]), paths.vec, "Selected gene sets") %>%
+  mutate(training = "Dense + Gene Set")
 # pre3 <- readCors2("kegg_filt2_v6.3", c("", letters[1:5]), paths.vec, "Dense + Pathway") %>%
 #   mutate(training = "primed + dropout")
 
 # pre.post <- readCors2("kegg_filt2_v5.2", c("", letters[1:5]), paths.vec, "Dense + Pathway + Dense") %>%
 #   mutate(training = "primed")
-pre2.post <- readCors2("comb_paths3_v5.3", c("", letters[1:5]), paths.vec, "Dense + Pathway + Dense") %>%
-  mutate(training = "primed + pretrained")
+pre2.post <- readCors2("paths_filt2_full_prepostdense_v5.3", c("", letters[1:5]), paths.vec, "Selected gene sets") %>%
+  mutate(training = "Dense + Gene Set + Dense")
 # pre3.post <- readCors2("kegg_filt2_v5.4", c("", letters[1:5]), paths.vec, "Dense + Pathway + Dense") %>%
 #   mutate(training = "primed + dropout")
 
-df.path_sel <- Reduce(rbind, list(base2, base4, all_train, all_init)) %>%
+df.path_sel <- Reduce(rbind, list(main, pre, unfrozen, all_train, all_nofrozen, all_init)) %>%
   left_join(mutate(kegg.df.com, path = pathID) %>% select(path, top_cat, category), by = "path") %>%
-  mutate(group = ifelse(model == "Pathway", "Selected GOs and KEGGs", "All GOs + KEGGs"),
-         training = ifelse(training %in% c("pretrained", "pretrained only"), "Only pretraining", "Whole training"))
-
-png("figures/minCor_pretraning_comp.png", height = 300)
-ggplot(df.path_sel, aes(x = training, y = minCor)) +
- geom_boxplot() +
- scale_x_discrete(name = "") +
- scale_y_continuous(name = "Replicability") +
- theme_bw() +
- facet_wrap(~ group)
-dev.off()
-
-png("figures/minCor_pretraning_Ngenes.png", height = 300)
-df.path_sel %>%
-  filter(group == "All GOs + KEGGs") %>%
-  ggplot(aes(x = Freq, y = minCor)) +
-    geom_point() +
-    scale_x_log10(name = "Genes per pathway") +
-    scale_y_continuous(name = "Replicability") +
-    theme_bw() +
-    facet_wrap(~ training)
-dev.off()
+  mutate(group = ifelse(model == "Selected gene sets", "Selected GOs and KEGGs", "All GOs + KEGGs"),
+         training = recode(training, "pretrained" = "Step 1", "pretrained only" = "Step 1",
+                            "whole training" = "Step 1 + step 2 + step 3", "primed + pretrained" = "Step 1 + step 2 + step 3",
+                            "unfrozen" = "Step 1 + step 3", "Whole training, without adaptation" = "Step 1 + step 3"),
+         training = factor(training, levels = c("Step 1", "Step 1 + step 3",  "Step 1 + step 2 + step 3")))
 
 plot_rep <- ggplot(df.path_sel, aes(x = training, y = minCor)) +
  geom_boxplot() +
  scale_x_discrete(name = "") +
  scale_y_continuous(name = "Replicability") +
  theme_bw() +
- facet_wrap(~ group)
+ facet_wrap(~ group, scales = "free_x")
+
+png("figures/minCor_pretraning_comp.png", height = 300, width = 800)
+plot_rep
+dev.off()
 
 plot_genes <-  df.path_sel %>%
-   filter(group == "All GOs + KEGGs") %>%
-   ggplot(aes(x = Freq, y = minCor)) +
-     geom_point() +
-     scale_x_log10(name = "Genes per pathway") +
-     scale_y_continuous(name = "Replicability") +
-     theme_bw() +
-     facet_wrap(~ training)
+  filter(group == "All GOs + KEGGs") %>%
+  ggplot(aes(x = Freq, y = minCor)) +
+    geom_point() +
+    scale_x_log10(name = "Genes per pathway") +
+    scale_y_continuous(name = "Replicability") +
+    theme_bw() +
+    facet_wrap(~ training) +
+    geom_vline(xintercept = 30, linetype = "dashed", color = "grey")
 
-png("figures/replicability_panel.png", height = 600)
+png("figures/minCor_pretraning_Ngenes.png", height = 300)
+plot_genes
+dev.off()
+
+png("figures/replicability_panel.png", height = 600, width = 800)
 plot_grid(plot_rep, plot_genes, ncol = 1, labels = c("A", "B"))
 dev.off()
 
-
+table(ifelse(grepl("GO", main$path), "GO", "KEGG"))
 df.path_sel %>% group_by(training, group) %>%
 summarize(p = mean(minCor > 0.7))
 
 ## Models comparison
-df.mod <- Reduce(rbind, list(base2,post2, pre2, pre2.post)) %>%
+df.mod <- Reduce(rbind, list(main,post2, pre2, pre2.post)) %>%
   left_join(mutate(kegg.df.com, path = pathID) %>% select(path, top_cat, category), by = "path") %>%
-  mutate(Model = factor(model , levels = c("Pathway", "Pathway + Dense", "Dense + Pathway", "Dense + Pathway + Dense")),
-          training = factor(training , levels = c("primed", "primed + pretrained", "primed + dropout")))
+  mutate( training = recode(training, `Step 1 + step 2 + step 3` = "Gene Set"),
+          training = factor(training , levels = c("Gene Set", "Gene Set + Dense", "Dense + Gene Set", "Dense + Gene Set + Dense")))
 
 
 
 png("figures/minCor_models.png", width = 800, height = 300)
 df.mod %>%
-  ggplot(aes(x = Model, y = minCor, color = Model)) +
+  ggplot(aes(x = training, y = minCor)) +
   geom_boxplot() +
   theme_bw() +
   scale_y_continuous(name = "Replicability") +
-  geom_hline(yintercept = c(0.3, 0.5, 0.7, 0.9), linetype = "dashed")
+  xlab("Network structure")
 dev.off()
 
 ## Training comparison
-df.train <- Reduce(rbind, list(base2, base3, base5)) %>%
+df.train <- Reduce(rbind, list(main, drop, drop_full)) %>%
   left_join(mutate(kegg.df.com, path = pathID) %>% select(path, top_cat, category), by = "path") %>%
-  mutate(Model = factor(model , levels = c("Pathway", "Pathway + Dense", "Dense + Pathway", "Dense + Pathway + Dense")),
-        training = gsub("primed + ", "", training, fixed = TRUE),
-        Training = factor(training , levels = c("pretrained", "dropout", "pretrained + dropout")),
-      Training = recode(Training, pretrained = "Pathway", dropout = "Dropout (no pretraining)",
-                `pretrained + dropout` = "Dropout (pretraining)"))
+  mutate(Training = recode(training, "Step 1 + step 2 + step 3" = "Whole training",
+        "Step 2 + dropout" = "Whole training + dropout",
+        Dropout = "Step 1 + step 3 + dropout"),
+        Training = factor(Training , levels = c("Whole training", "Whole training + dropout", "Step 1 + step 3 + dropout")),)
 
 
 
@@ -231,8 +222,7 @@ df.train %>%
   ggplot(aes(x = Training, y = minCor)) +
   geom_boxplot() +
   theme_bw() +
-  scale_y_continuous(name = "Replicability") +
-  geom_hline(yintercept = c(0.3, 0.5, 0.7, 0.9), linetype = "dashed")
+  scale_y_continuous(name = "Replicability")
 dev.off()
 
 
@@ -284,9 +274,10 @@ dev.off()
 
 
 ## Plot correlation of worse path
-path_vals <- readPathways("comb_paths3_v3.6", sufix = c("", letters[1:5]), path_name = paths.vec)
-path_mat <- sapply(path_vals, function(m) m[, 804 ])
-
+path_vals <- readPathways("paths_filt3_full_v3.6", sufix = c("", letters[1:5]), path_name = paths.vec)
+path_mat <- sapply(path_vals, function(m) m[, 427 ])
+path_mat2 <- path_mat
+path_mat2[, 5] <-  - path_mat2[, 5]
 
 #'#################################################################################
 ## Dropouts

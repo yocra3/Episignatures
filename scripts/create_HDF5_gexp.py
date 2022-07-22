@@ -159,24 +159,40 @@ dataset_input[...] = x_prad_std
 f.close()
 
 
-### Tumor
-f = h5py.File('results/TCGA_gexp_coding_noPRAD/vsd_norm_prad_tumorassays.h5', 'r')
+### ctrlor
+f = h5py.File('results/TCGA_gexp_coding_noPRAD/vsd_norm_prad_ctrlorassays.h5', 'r')
 meth_matrix = f['assay001']
-x_prad_tum = meth_matrix[...]
+x_prad_ctrl = meth_matrix[...]
 f.close()
 
 
-means_prad_tum = np.mean(x_prad_tum, axis = 0)
-stds_prad_tum = np.std(x_prad_tum, axis = 0)
-x_prad_tum_std = (x_prad_tum - means_prad_tum)/stds_prad_tum
+means_prad_ctrl = np.mean(x_prad_ctrl, axis = 0)
+stds_prad_ctrl = np.std(x_prad_ctrl, axis = 0)
+x_prad_ctrl_std = (x_prad_ctrl - means_prad_ctrl)/stds_prad_ctrl
 
 # Save reshaped training data
-f = h5py.File('results/TCGA_gexp_coding_noPRAD/prad_tumor_assay_reshaped_standardized.h5', 'w')
-dataset_input = f.create_dataset('methy', (x_prad_tum_std.shape[0], x_prad_tum_std.shape[1]))
-dataset_input[...] = x_prad_tum_std
+f = h5py.File('results/TCGA_gexp_coding_noPRAD/prad_ctrlor_assay_reshaped_standardized.h5', 'w')
+dataset_input = f.create_dataset('methy', (x_prad_ctrl_std.shape[0], x_prad_ctrl_std.shape[1]))
+dataset_input[...] = x_prad_ctrl_std
 f.close()
 
 
+### Control
+f = h5py.File('results/TCGA_gexp_coding_noPRAD/vsd_norm_prad_controlassays.h5', 'r')
+meth_matrix = f['assay001']
+x_prad_ctrl = meth_matrix[...]
+f.close()
+
+
+means_prad_ctrl = np.mean(x_prad_ctrl, axis = 0)
+stds_prad_ctrl = np.std(x_prad_ctrl, axis = 0)
+x_prad_ctrl_std = (x_prad_ctrl - means_prad_ctrl)/stds_prad_ctrl
+
+# Save reshaped training data
+f = h5py.File('results/TCGA_gexp_coding_noPRAD/prad_ctrl_assay_reshaped_standardized.h5', 'w')
+dataset_input = f.create_dataset('methy', (x_prad_ctrl_std.shape[0], x_prad_ctrl_std.shape[1]))
+dataset_input[...] = x_prad_ctrl_std
+f.close()
 
 
 # Adapt Control
@@ -308,4 +324,22 @@ x_helix_array[:, stds_array == 0] = 0
 f = h5py.File('results/HELIX/helix_array_reshaped_standardized.h5', 'w')
 dataset_input = f.create_dataset('methy', (x_helix_array.shape[0], x_helix_array.shape[1]))
 dataset_input[...] = x_helix_array
+f.close()
+
+
+### Change GSE54460
+f = h5py.File('results/GSE54460/vst_all_assays.h5', 'r')
+meth_matrix = f['assay001']
+x_gse54460 = meth_matrix[...]
+f.close()
+
+means_gse54460 = np.mean(x_gse54460, axis = 0)
+stds_gse54460 = np.std(x_gse54460, axis = 0)
+x_prad_gse54460 = (x_gse54460 - means_gse54460)/stds_gse54460
+x_prad_gse54460[:, stds_gse54460 == 0] = 0
+
+# Save reshaped training data
+f = h5py.File('results/GSE54460/gse54460_reshaped_standardized.h5', 'w')
+dataset_input = f.create_dataset('methy', (x_prad_gse54460.shape[0], x_prad_gse54460.shape[1]))
+dataset_input[...] = x_prad_gse54460
 f.close()
