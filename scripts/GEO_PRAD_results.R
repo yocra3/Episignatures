@@ -183,7 +183,7 @@ rbind(mutate(tab.path_prad, Dataset = "TCGA"),
     ggplot(aes(x = DE_prop , y = abs(logFC))) +
     geom_point() +
     scale_x_continuous(name = "Proportion of genes DE") +
-    scale_y_continuous(name = "logFC Pathways (absolute value)") +
+    scale_y_continuous(name = "logFC Gene Set (absolute value)") +
     facet_wrap(~ Dataset) +
     theme_bw()
 dev.off()
