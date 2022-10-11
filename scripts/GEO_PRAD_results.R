@@ -73,8 +73,8 @@ hip.all.ctrl <- hip.all_vals[, hip.all_vals$sample_type == "Solid Tissue Normal"
 hip.cor <- sapply(seq_len(nrow(hip.all.ctrl)), function(i) cor(t(assay(hip.all.ctrl[i, ])), t(assay(hip.ctrl_vals[i,])) ))
 
 df.cor <- data.frame(cor = c(path.cor, gsva.cor, hip.cor),
-  Method = rep(c("GO + KEGG model", "GSVA", "Hipathia"), lengths(list(path.cor, gsva.cor, hip.cor)))) %>%
-  mutate(Method = factor(Method, levels = c("GSVA", "Hipathia", "GO + KEGG model")))
+  Method = rep(c("NetActivity", "GSVA", "Hipathia"), lengths(list(path.cor, gsva.cor, hip.cor)))) %>%
+  mutate(Method = factor(Method, levels = c("GSVA", "Hipathia", "NetActivity")))
 
 #
 plot_stab <- ggplot(df.cor, aes(x = Method, y = cor)) +
@@ -85,9 +85,10 @@ plot_stab <- ggplot(df.cor, aes(x = Method, y = cor)) +
     text = element_text(size = 20))
 
 
-png("figures/PRAD_scores_stability.png")
+png("figures/PRAD_scores_stability.png", height = 240)
 plot_stab
 dev.off()
+
 summary(lm(cor ~ Method, df.cor))
 
 tapply(df.cor$cor, df.cor$Method, summary)
@@ -115,9 +116,9 @@ path.plot <- ggplot(comb_paths, aes(x = logFC.TCGA, y = logFC.GEO, col = Signif)
   geom_point() +
   theme_bw()  +
   scale_color_manual(values = c("#004D40", "#1E88E5", "#9E9E9E", "#FFC107")) +
-  ggtitle("GO + KEGG model") +
-  xlab("logFC in TCGA") +
-  ylab("logFC in GEO") +
+  ggtitle("NetActivity") +
+  xlab("logFC in TCGA-PRAD") +
+  ylab("logFC in GEO-PRAD") +
   geom_text(data =  data.frame(label = sprintf("N = %d \n r = %.2f", nrow(comb_paths), cor(comb_paths$logFC.TCGA, comb_paths$logFC.GEO)),
    x = -Inf, y = Inf, hjust = -0.3, vjust = 1.5), aes(label = label, x = x, y = y, hjust = hjust, vjust = vjust), col = "black", size = 6) +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"),
@@ -203,8 +204,8 @@ gene.plot <- ggplot(comb.genes, aes(x = log2FoldChange, y = logFC, col = Signif)
   theme_bw()  +
   scale_color_manual(values = c("#004D40", "#1E88E5", "#9E9E9E", "#FFC107")) +
   ggtitle("Genes") +
-  xlab("log2FC in TCGA") +
-  ylab("logFC in GEO") +
+  xlab("log2FC in TCGA-PRAD") +
+  ylab("logFC in GEO-PRAD") +
   geom_text(data =  data.frame(label = sprintf("N = %d \n r = %.2f", nrow(comb.genes), cor(comb.genes$log2FoldChange, comb.genes$logFC)),
    x = -Inf, y = Inf, hjust = -0.3, vjust = 1.5), aes(label = label, x = x, y = y, hjust = hjust, vjust = vjust), col = "black", size = 6) +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"),
@@ -239,8 +240,8 @@ gsva.plot <- ggplot(comb.gsva, aes(x = logFC.TCGA, y = logFC.GEO, col = Signif))
   theme_bw() +
   scale_color_manual(values = c("#004D40", "#1E88E5", "#9E9E9E", "#FFC107")) +
   ggtitle("GSVA") +
-  xlab("logFC in TCGA") +
-  ylab("logFC in GEO") +
+  xlab("logFC in TCGA-PRAD") +
+  ylab("logFC in GEO-PRAD") +
   geom_text(data =  data.frame(label = sprintf("N = %d \n r = %.2f", nrow(comb.gsva), cor(comb.gsva$logFC.TCGA, comb.gsva$logFC.GEO)),
    x = -Inf, y = Inf, hjust = -0.3, vjust = 1.5), aes(label = label, x = x, y = y, hjust = hjust, vjust = vjust), col = "black", size = 6) +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"),
@@ -276,8 +277,8 @@ hip.plot <- ggplot(comb.hipathia, aes(x = statistic.TCGA, y = statistic.GEO, col
   theme_bw()  +
   scale_color_manual(name = "Significance", values = c("#004D40", "#1E88E5", "#9E9E9E", "#FFC107")) +
   ggtitle("Hipathia") +
-  xlab("U statistic in TCGA") +
-  ylab("U statistic in GEO") +
+  xlab("U statistic in TCGA-PRAD") +
+  ylab("U statistic in GEO-PRAD") +
   geom_text(data =  data.frame(label = sprintf("N = %d \n r = %.2f", nrow(comb.hipathia), cor(comb.hipathia$statistic.TCGA, comb.hipathia$statistic.GEO)),
    x = -Inf, y = Inf, hjust = -0.3, vjust = 1.5), aes(label = label, x = x, y = y, hjust = hjust, vjust = vjust), col = "black", size = 6) +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"),

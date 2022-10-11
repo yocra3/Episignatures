@@ -154,9 +154,9 @@ save(path_df, file = "results/GTEx_coding/paths_filt2_full_v3.11/gtex_tcga_compa
 
 hist_data_cor <- path_df %>%
   ggplot(aes(x = abs(cor_path))) +
-  geom_histogram() +
-  ylab("N gene sets") +
-  geom_vline(xintercept  = c(0.3, 0.7)) +
+  stat_ecdf() +
+  ylab("Proportion of gene sets") +
+  geom_vline(xintercept  = c(0.3, 0.7), linetype = "dashed") +
   xlab("Correlation between GTEx and TCGA") +
   theme_bw()
 

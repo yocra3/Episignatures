@@ -106,9 +106,12 @@ plot_train <- df_path %>%
     theme_bw() +
     xlab("Initial gene set activity score") +
     ylab("Final gene set activity score") +
-    scale_color_manual(values = c("#fcfc7e", "grey"))
+    scale_color_manual(values = c("#fcfc7e", "grey")) +
+    geom_abline(slope = 1, linetype = "dashed")
+    # scale_y_continuous(limits = c(-1, 3)) +
+    # scale_x_continuous(limits = c(-1, 3))
 
-png("figures/hsa00430_step1_step3.png", height = 300, width = 300)
+png("figures/hsa00430_step1_step3.png", height = 300, width = 500)
 plot_train
 dev.off()
 
@@ -131,7 +134,7 @@ plot_weight <- path_w_comb[, c("main", "1")] %>%
   gather(Model, Weight, 1:2) %>%
   mutate(Model = recode(Model, main = "Final", X1 = "Initial"),
           Model = factor(Model, levels = c("Initial", "Final"))) %>%
-    ggplot(aes(x = Model, y = Weight, group = Gene, col = Gene)) +
+    ggplot(aes(x = Model, y = abs(Weight), group = Gene, col = Gene)) +
     geom_point() +
     geom_line() +
     theme_bw()

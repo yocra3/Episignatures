@@ -162,23 +162,39 @@ plot_rep <- ggplot(df.path_sel, aes(x = training, y = minCor)) +
  scale_x_discrete(name = "") +
  scale_y_continuous(name = "Replicability") +
  theme_bw() +
- facet_wrap(~ group, scales = "free_x")
+ facet_wrap(~ group, scales = "free_x") +
+ theme(plot.title = element_text(hjust = 0.5),
+                  text = element_text(size = 20))
 
-png("figures/minCor_pretraning_comp.png", height = 300, width = 800)
+
+png("figures/minCor_pretraning_comp.png", height = 300, width = 1000)
 plot_rep
 dev.off()
+
+png("figures/minCor_pretraning_comp_abstract.png", height = 300,  width = 600)
+subset(df.path_sel, group == "Selected GOs and KEGGs") %>%
+ggplot( aes(x = training, y = minCor)) +
+ geom_boxplot() +
+ scale_x_discrete(name = "") +
+ scale_y_continuous(name = "Replicability") +
+ theme_bw() +
+ theme(plot.title = element_text(hjust = 0.5),
+                  text = element_text(size = 20)) +
+  ggtitle("Scores robustness")
+dev.off()
+
 
 plot_genes <-  df.path_sel %>%
   filter(group == "All GOs + KEGGs") %>%
   ggplot(aes(x = Freq, y = minCor)) +
     geom_point() +
-    scale_x_log10(name = "Genes per pathway") +
+    scale_x_log10(name = "Genes per gene set") +
     scale_y_continuous(name = "Replicability") +
     theme_bw() +
     facet_wrap(~ training) +
     geom_vline(xintercept = 30, linetype = "dashed", color = "grey")
 
-png("figures/minCor_pretraning_Ngenes.png", height = 300)
+png("figures/minCor_pretraning_Ngenes.png", height = 200)
 plot_genes
 dev.off()
 
