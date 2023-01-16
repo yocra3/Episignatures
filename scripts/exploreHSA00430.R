@@ -65,7 +65,7 @@ rownames(path_w_comb)  <- mapIds(org.Hs.eg.db, rownames(path_w_comb)  , keytype=
 path_w_comb[, c(2, 4, 5)] <- -path_w_comb[,  c(2, 4, 5)]
 
 
-png("figures/hsa00430_weights_heatmap.png")
+png("figures/hsa00430_weights_heatmap.png", res = 300, height = 1500, width = 1500)
 myBreaks <- c(seq(-max(abs(path_w_comb)), 0, length.out=ceiling(100/2) + 1),
               seq(max(abs(path_w_comb))/100, max(abs(path_w_comb)), length.out=floor(100/2)))
 pheatmap(path_w_comb, breaks = myBreaks)
@@ -77,21 +77,21 @@ path_df$Symbol <- mapIds(org.Hs.eg.db, path_df$ensembl , keytype= "ENSEMBL", col
 gene_cors <- cor(t(data.matrix(assay(gtex.vst[path_df$ensembl, ]))))
 colnames(gene_cors) <- rownames(gene_cors) <- path_df$Symbol
 
-png("figures/hsa00430_genes_correlation.png")
+png("figures/hsa00430_genes_correlation.png", res = 300, height = 1600, width = 1800)
 ggcorrplot(gene_cors, method = "circle", hc.order = TRUE)
 dev.off()
 
 pc_path <- prcomp(t(data.matrix(assay(gtex.vst[path_df$ensembl, ]))), scale = TRUE)
 pre_path <- t(all_gtex[path_df$ensembl, ]) %*% path_w_comb[, "1"]
 
-pc_plot <- data.frame(PC1 = pc_path$x[, 1], Pathway = pre_path) %>%
-  ggplot(aes(x = Pathway, y = PC1)) + geom_point() +
-  theme_bw() +
-  xlab("Initial gene set activity score") +
-  ylab("PC1 of gene set genes")
-png("figures/hsa00430_step1_pca.png", height = 300, width = 300)
-pc_plot
-dev.off()
+# pc_plot <- data.frame(PC1 = pc_path$x[, 1], Pathway = pre_path) %>%
+#   ggplot(aes(x = Pathway, y = PC1)) + geom_point() +
+#   theme_bw() +
+#   xlab("Initial gene set activity score") +
+#   ylab("PC1 of gene set genes")
+# png("figures/hsa00430_step1_pca.png", height = 300, width = 300, res = 300)
+# pc_plot
+# dev.off()
 
 
 
@@ -111,13 +111,13 @@ plot_train <- df_path %>%
     # scale_y_continuous(limits = c(-1, 3)) +
     # scale_x_continuous(limits = c(-1, 3))
 
-png("figures/hsa00430_step1_step3.png", height = 300, width = 500)
+png("figures/hsa00430_step1_step3.png", height = 900, width = 1500, res = 300)
 plot_train
 dev.off()
 
-png("figures/hsa00430_scores_panel.png", width = 600, height = 300)
-plot_grid(pc_plot, plot_train, nrow = 1, labels = c("A", "B"), rel_widths = c(2, 3))
-dev.off()
+# png("figures/hsa00430_scores_panel.png", width = 600, height = 300)
+# plot_grid(pc_plot, plot_train, nrow = 1, labels = c("A", "B"), rel_widths = c(2, 3))
+# dev.off()
 
 
 a <- path_w_comb[, c("main", "1")] %>%
@@ -137,9 +137,10 @@ plot_weight <- path_w_comb[, c("main", "1")] %>%
     ggplot(aes(x = Model, y = abs(Weight), group = Gene, col = Gene)) +
     geom_point() +
     geom_line() +
+    scale_y_continuous(name = "Relevance") +
     theme_bw()
 
-png("figures/hsa00430_weights.png", height = 300, width = 300)
+png("figures/hsa00430_weights.png", height = 600, width = 900, res = 300)
 plot_weight
 dev.off()
 
@@ -154,11 +155,11 @@ plot_genes <- data.frame(brain_mat, Tissue = gtex.vst$smts) %>%
   gather(Gene, Expression, 1:3) %>%
   ggplot(aes(x = Tissue, y = Expression, color = Group)) +
   geom_violin() +
-  scale_color_manual(values = c("#fcfc7e", "grey")) +
+  scale_color_manual(values = c("#f2f205", "grey")) +
   facet_grid(Gene ~ ., scales = "free_y") +
   theme_bw()
 
 #
-png("figures/hsa00430_sel_gene_exprs.png", width = 1900)
+png("figures/hsa00430_sel_gene_exprs.png", width = 6000, height = 1500, res = 300)
 plot_genes
 dev.off()

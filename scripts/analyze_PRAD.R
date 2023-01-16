@@ -1,4 +1,4 @@
-docker run -it -v /home/SHARED/PROJECTS/Episignatures:/home/SHARED/PROJECTS/Episignatures -w "$PWD" yocra3/episignatures_rsession:1.3  /bin/bash
+docker run -it -v /home/SHARED/PROJECTS/Episignatures:/home/SHARED/PROJECTS/Episignatures -w "$PWD" yocra3/episignatures_rsession:1.3  /bin/bash # nolint: error.
 R
 #'#################################################################################
 #'#################################################################################
@@ -17,54 +17,35 @@ library(HDF5Array)
 library(hipathia)
 library(org.Hs.eg.db)
 library(parallel)
-
+library(NetActivity)
+library(NetActivityData)
 
 load("data/tcga_gexp_combat.Rdata")
-genes <- read.table("./results/GTEx_coding/input_genes.txt")
 
-path.map <- read.table("results/GTEx_coding/go_kegg_filt2_gene_map.tsv", header = TRUE)
-
-prad.feat <- read.table("results/GTEx_coding_PRAD_tumor/paths_filt2_full_v3.11/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
-paths <- read.table("results/GTEx_coding/paths_filt2_full_v3.11/model_trained/pathways_names.txt", header = TRUE)
-paths.vec <- as.character(paths[, 1])
-colnames(prad.feat) <- paths.vec
-
-## Subset data
-prad.vst <- loadHDF5SummarizedExperiment("results/TCGA_gexp_coding_noPRAD/", prefix = "vsd_norm_prad_tumor")
-
-prad.all <- gexp_tcga_combat[genes$V1, gexp_tcga_combat$project_id == "TCGA-PRAD"]
+## Prepare PRAD data
+prad.all <- gexp_tcga_combat[, gexp_tcga_combat$project_id == "TCGA-PRAD"]
 prad <- prad.all[, !is.na(prad.all$paper_Reviewed_Gleason_category)]
+prad$gleason <- factor(ifelse(prad$paper_Reviewed_Gleason_category == ">=8", "High", "Low"), levels = c("Low", "High"))
 
-## DE in raw data
-prad$gleason <- ifelse(prad$paper_Reviewed_Gleason_category == ">=8", "High", "Low")
 ddsSE <- DESeqDataSet(prad, design = ~ paper_Subtype + age_at_index + race + gleason )
 vst.prad <- vst(ddsSE, blind=FALSE)
-#
-# pc.ori <- prcomp(t(assay(vst.prad)))
-# data.frame(pc.ori$x, var = prad$paper_Reviewed_Gleason_category) %>% ggplot(aes(x = PC1, y = PC2, color = var)) + geom_point()
-# data.frame(pc.ori$x, var = prad$gleason) %>% ggplot(aes(x = PC1, y = PC2, color = var)) + geom_point()
-# data.frame(pc.ori$x, var = prad$paper_Subtype) %>% ggplot(aes(x = PC1, y = PC2, color = var)) + geom_point()
-#
+save(vst.prad, file = "results/TCGA_PRAD/vst_SE.Rdata")
 
+
+## DE in raw data
 dds <- DESeq(ddsSE)
 res_prad <- results(dds)
 res_prad$p.adj.bf <- p.adjust(res_prad$pvalue )
 save(res_prad, file = "results/TCGA_PRAD/genes_results.Rdata")
 
-## Run GO enrichment
-# dif.genes <- as.numeric(res$padj < 0.05)
-# dif.genes[is.na(dif.genes)] <- 0
-# names(dif.genes) <- rownames(res)
-#
-# pwf <- nullp(dif.genes, "hg19", "ensGene")
-# gos <- goseq(pwf, "hg19", "ensGene", test.cats = c("GO:BP"))
-# gos.mod <- subset(gos, category %in% paths.vec)
-# gos.mod$prop_DE <- gos.mod$numDEInCat / gos.mod$numInCat
-# rownames(gos.mod) <- gos.mod$category
+## NetActivity
+preproc_prad <- prepareSummarizedExperiment(vst.prad, "gtex_gokegg")
+scores_prad <- computeGeneSetScores(preproc_prad, "gtex_gokegg")
+save(scores_prad, file = "results/TCGA_PRAD/NetActivity_scores.Rdata")
 
-## Run pathways differential Analysis
-mod <- model.matrix(~ gleason + paper_Subtype + age_at_index + race, colData(prad))
-lm.path <- lmFit(t(prad.feat), mod) %>% eBayes()
+
+mod <- model.matrix(~ gleason + paper_Subtype + age_at_index + race, colData(scores_prad))
+lm.path <- lmFit(assay(scores_prad), mod) %>% eBayes()
 tab.path_prad <- topTable(lm.path, coef = 2, n = Inf)
 tab.path_prad$category <- rownames(tab.path_prad)
 
@@ -74,10 +55,10 @@ tab.path_prad$DE_prop <- sapply( tab.path_prad$category, function(cat) {
   mean(mini_tab$padj  < 0.05, na.rm = TRUE)
 })
 
-tab.path_prad_race <- topTable(lm.path, coef = 13, n = Inf)
-tab.path_prad_race$category <- rownames(tab.path_prad_race)
+# tab.path_prad_race <- topTable(lm.path, coef = 13, n = Inf)
+# tab.path_prad_race$category <- rownames(tab.path_prad_race)
 
-save(tab.path_prad, tab.path_prad_race, file = "results/TCGA_PRAD/pathways_results.Rdata")
+save(tab.path_prad, file = "results/TCGA_PRAD/pathways_results.Rdata")
 
 
 png("figures/TCGA_propDE_vs_pvalPaths.png")

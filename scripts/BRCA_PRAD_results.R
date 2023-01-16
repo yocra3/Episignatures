@@ -11,6 +11,9 @@ library(cowplot)
 library(NetActivityData)
 library(DESeq2)
 library(parallel)
+library(HDF5Array)
+library(hipathia)
+
 
 ## Load data
 load("results/TCGA_PRAD/pathways_results.Rdata")
@@ -23,8 +26,6 @@ load("results/TCGA_BRCA/genes_results.Rdata")
 load("results/TCGA_BRCA/GSVA_results.Rdata")
 load("results/TCGA_BRCA/hipathia.res.Rdata")
 
-
-## Genes
 
 
 ## Compare Gene DE

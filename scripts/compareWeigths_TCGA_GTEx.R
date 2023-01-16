@@ -160,7 +160,7 @@ hist_data_cor <- path_df %>%
   xlab("Correlation between GTEx and TCGA") +
   theme_bw()
 
-png("figures/data_models_cor_hist.png", height = 300)
+png("figures/data_models_cor_hist.png", height = 900, width = 1500, res = 300)
 hist_data_cor
 dev.off()
 
@@ -170,7 +170,7 @@ path_df %>%
 
 
 #
-png("figures/data_models_cor_step.png", height = 400)
+png("figures/data_models_cor_step.png", height = 1000, width = 1500, res = 300)
 path_df %>%
   mutate(High = ifelse(path %in% c("GO:0070076", "GO:0010888", "GO:0010528", "GO:0032274"), path, "Other")) %>%
   ggplot(aes(x = abs(cor_path_pre), y = abs(cor_path), color = High)) +
