@@ -51,14 +51,16 @@ ggplot(weight_df, aes(x = Npaths)) +
 ggplot(weight_df, aes(x = relevance)) +
   geom_histogram()
 
-png("figures/weights_pLI.png", height = 1200, width = 2000, res = 300)
-filter(weight_df, !is.na(pLI)) %>%
-ggplot(aes(x = Npathscat, y = relevance, color = pLIcat)) +
+pli_plot <- filter(weight_df, !is.na(pLI)) %>%
+  ggplot(aes(x = Npathscat, y = relevance, color = pLIcat)) +
   geom_boxplot() +
   theme_bw() +
   xlab("Gene Sets per gene") +
   ylab("NetActivity relevance") +
   scale_color_discrete(name = "Gene constraint")
+
+png("figures/weights_pLI.png", height = 1200, width = 2000, res = 300)
+pli_plot
 dev.off()
 
 weight_df %>%
@@ -83,14 +85,15 @@ summary(lm(pLI_logit ~ Npaths + relevance, weight_df, subset = Npaths > 6))
 ggplot(weight_df, aes(x = Ndisease )) +
   geom_histogram()
 
-png("figures/weights_disgenet.png", height = 1200, width = 2000, res = 300)
-ggplot(weight_df, aes(x = Ndisease, y = relevance)) +
+disgenet_plot <- ggplot(weight_df, aes(x = Ndisease, y = relevance)) +
   geom_point() +
   scale_x_log10() +
   theme_bw() +
   xlab("Diseases per gene") +
   ylab("NetActivity relevance") +
   facet_grid(~ Npathscat)
+png("figures/weights_disgenet.png", height = 1200, width = 2000, res = 300)
+disgenet_plot
 dev.off()
 
 summary(lm(log10(Ndisease + 0.1) ~ Npaths + relevance, weight_df))
@@ -98,3 +101,5 @@ summary(lm(log10(Ndisease  + 0.1) ~ relevance, weight_df, subset = Npaths == 1))
 summary(lm(log10(Ndisease  + 0.1) ~ relevance, weight_df, subset = Npaths == 2))
 summary(lm(log10(Ndisease + 0.1) ~ Npaths + relevance, weight_df, subset = Npaths > 2 & Npaths < 6))
 summary(lm(log10(Ndisease  + 0.1) ~ Npaths + relevance, weight_df, subset = Npaths > 6))
+
+plot_grid(pli_plot)
