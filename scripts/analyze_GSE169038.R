@@ -1,4 +1,4 @@
-docker run -it -v /home/SHARED/PROJECTS/Episignatures:/home/SHARED/PROJECTS/Episignatures -w "$PWD" yocra3/episignatures_rsession:1.3  /bin/bash
+docker run -it -v /home/SHARED/PROJECTS/Episignatures:/home/SHARED/PROJECTS/Episignatures -w "$PWD" yocra3/episignatures_rsession:1.3  /bin/bash # nolint: error.
 
 #'#################################################################################
 #'#################################################################################
@@ -18,22 +18,23 @@ library(hipathia)
 library(org.Hs.eg.db)
 library(parallel)
 library(rjson)
+library(NetActivity)
 
 
 load("results/GSE169038/allGenes.se.RData")
-se.tcga_genes <- loadHDF5SummarizedExperiment("results/GSE169038/", prefix = "network_genes")
+# se.tcga_genes <- loadHDF5SummarizedExperiment("results/GSE169038/", prefix = "network_genes")
 
 
-genes <- read.table("./results/TCGA_gexp_combat_coding/input_genes.txt")
-path.map <- read.table("results/GTEx_coding/go_kegg_filt2_gene_map.tsv", header = TRUE)
-path_N <- group_by(path.map, PathwayID) %>% summarize(N = n()) %>% mutate(category = PathwayID)
+# genes <- read.table("./results/TCGA_gexp_combat_coding/input_genes.txt")
+# path.map <- read.table("results/GTEx_coding/go_kegg_filt2_gene_map.tsv", header = TRUE)
+# path_N <- group_by(path.map, PathwayID) %>% summarize(N = n()) %>% mutate(category = PathwayID)
 
-prad.feat <- read.table("results/GSE169038/paths_filt2_full_v3.11/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
-paths <- read.table("results/GTEx_coding/paths_filt2_full_v3.11/model_trained/pathways_names.txt", header = TRUE)
-paths.vec <- as.character(paths[, 1])
-colnames(prad.feat) <- paths.vec
+# prad.feat <- read.table("results/GSE169038/paths_filt2_full_v3.11/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+# paths <- read.table("results/GTEx_coding/paths_filt2_full_v3.11/model_trained/pathways_names.txt", header = TRUE)
+# paths.vec <- as.character(paths[, 1])
+# colnames(prad.feat) <- paths.vec
 
-load("results/GTEx_coding/paths_filt2_full_v3.11/gtex_tcga_comparative.Rdata")
+# load("results/GTEx_coding/paths_filt2_full_v3.11/gtex_tcga_comparative.Rdata")
 # pc.feat <- prcomp(prad.feat)
 
 se$race <- ifelse(grepl( "White", se$characteristics_ch1.4), "EUR", "AFR")
@@ -47,9 +48,9 @@ se$gleason <- ifelse(se$primary == 5 |  se$secondary == 5 | se$gleason_cat == "4
 
 ## Subset samples with gleason < 3
 se.filt <- se[, !(se$primary == 1 |  se$secondary == 1)]
-prad.feat.filt <- prad.feat[!(se$primary == 1 |  se$secondary == 1), ]
-se.tcga_genes_filt <- se.tcga_genes[, !(se$primary == 1 |  se$secondary == 1)]
-
+# prad.feat.filt <- prad.feat[!(se$primary == 1 |  se$secondary == 1), ]
+# se.tcga_genes_filt <- se.tcga_genes[, !(se$primary == 1 |  se$secondary == 1)]
+save(se.filt, file = "results/GSE169038/SE_filt.Rdata")
 
 ## DE genes
 mod <- model.matrix(~  gleason + race + decipher, colData(se.filt))
@@ -61,23 +62,28 @@ tab.genes_geo$gene <- rowData(se)[as.character(rownames(tab.genes_geo )), "gene"
 save(tab.genes_geo, file = "results/GSE169038/de_genes_results.Rdata")
 
 
-## GSVA
-path_genes <- mclapply(paths.vec, function(x) subset(path.map, PathwayID == x & !is.na(Symbol))$Symbol, mc.cores = 10)
-names(path_genes) <- paths.vec
-geo_gsva <- gsva(data.matrix(assay(se.tcga_genes_filt)), path_genes, min.sz=5, max.sz=500)
+## NetActivity
+gse169038_se <- loadHDF5SummarizedExperiment("results/GSE169038/", prefix = "network_genes")
+assay(gse169038_se) <- data.matrix(assay(gse169038_se))
+gse169038_se$race <- ifelse(grepl( "White", gse169038_se$characteristics_ch1.4), "EUR", "AFR")
+gse169038_se$decipher <- factor(gsub("decipher risk group: ", "", gse169038_se$characteristics_ch1.3), levels = c("Lower", "Average", "Higher"))
+gse169038_se$primary <- gsub("primary gleason: ", "", gse169038_se$characteristics_ch1.1)
+gse169038_se$secondary <- gsub("secondary gleason: ", "", gse169038_se$characteristics_ch1.2)
+gse169038_se$primary <- as.numeric(ifelse(gse169038_se$primary == "--", 1, gse169038_se$primary))
+gse169038_se$secondary <- as.numeric(ifelse(gse169038_se$secondary == "--", 1, gse169038_se$secondary))
+gse169038_se$gleason_cat <- paste(gse169038_se$primary, gse169038_se$secondary, sep = "-")
+gse169038_se$gleason <- factor(ifelse(gse169038_se$primary == 5 |  gse169038_se$secondary == 5 | gse169038_se$gleason_cat == "4+4", "High", "Low"), levels = c("Low", "High"))
 
-lm.gsva <- lmFit(geo_gsva, mod) %>% eBayes()
-tab.gsva_geo <- topTable(lm.gsva, coef = 2, n = Inf)
-tab.gsva_geo$category <- rownames(tab.gsva_geo)
+gse169038_se_filt <- gse169038_se[, !(gse169038_se$primary == 1 |  gse169038_se$secondary == 1)]
+gse169038_prep <- prepareSummarizedExperiment(gse169038_se_filt, "gtex_gokegg")
+gse169038_scores <- computeGeneSetScores(gse169038_prep, "gtex_gokegg")
+save(gse169038_scores, file = "results/GSE169038/NetActivity_scores.Rdata")
 
-save(tab.gsva_geo, geo_gsva, file = "results/GSE169038/GSVA_results.Rdata")
-
-tab.gsva_geo_race <- topTable(lm.gsva, coef = 3, n = Inf)
-
-## DE paths
-lm.paths <- lmFit(t(prad.feat.filt), mod) %>% eBayes()
+mod_gse169038 <- model.matrix(~ gleason + race + decipher, colData(gse169038_scores))
+lm.paths <- lmFit(assay(gse169038_scores), mod_gse169038) %>% eBayes()
 tab.paths_geo <- topTable(lm.paths, coef = 2, n = Inf)
 tab.paths_geo$category <- rownames(tab.paths_geo)
+
 # tab.paths$pathway <- rownames(tab.paths)
 
 # comb_fgsea <- left_join(fgseaRes, tab.paths, by = "pathway")
@@ -126,6 +132,19 @@ cor(tab.paths_geo$DE_prop[tab.paths_geo$DE_prop > 0 ], abs(tab.paths_geo$logFC)[
 
 
 save(tab.paths_geo, file = "results/GSE169038/pathways_results.Rdata")
+
+## GSVA
+path_genes <- mclapply(paths.vec, function(x) subset(path.map, PathwayID == x & !is.na(Symbol))$Symbol, mc.cores = 10)
+names(path_genes) <- paths.vec
+geo_gsva <- gsva(data.matrix(assay(se.tcga_genes_filt)), path_genes, min.sz=5, max.sz=500)
+
+lm.gsva <- lmFit(geo_gsva, mod) %>% eBayes()
+tab.gsva_geo <- topTable(lm.gsva, coef = 2, n = Inf)
+tab.gsva_geo$category <- rownames(tab.gsva_geo)
+
+save(tab.gsva_geo, geo_gsva, file = "results/GSE169038/GSVA_results.Rdata")
+
+tab.gsva_geo_race <- topTable(lm.gsva, coef = 3, n = Inf)
 
 tab.paths_geo_race <- topTable(lm.paths, coef = 3, n = Inf)
 

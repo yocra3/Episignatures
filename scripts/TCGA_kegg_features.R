@@ -61,7 +61,7 @@ df.models <- Reduce(rbind, list(base, post, pre, pre_post)) %>%
 
 
 #
-png("figures/TCGA.pathways.trainingeval_models.png", width = 900)
+png("figures/TCGA.pathways.trainingeval_models.png", width = 2700, height = 1000, res = 300)
 df.models %>%
 filter(epoch > 1) %>%
   ggplot(aes(x = epoch, y = mse, color = dataset, group = dataset)) +
@@ -73,12 +73,12 @@ filter(epoch > 1) %>%
   scale_y_continuous(name = "MSE")
 dev.off()
 
-df.train <- Reduce(rbind, list(base2, drop, drop.full, auto)) %>%
-  mutate(model = factor(model, levels = c("Whole training", "Whole training + dropout", "Step 1 + step 3 + dropout", "Dense autoencoder")),
+df.train <- Reduce(rbind, list(base2, drop, drop.full)) %>%
+  mutate(model = factor(model, levels = c("Whole training", "Whole training + dropout", "Step 1 + step 3 + dropout")),
           dataset = ifelse(measure == "loss", "Training", "Validation"))
 
 
-png("figures/TCGA.pathways.trainingeval_training.png", width = 700, height = 300)
+png("figures/TCGA.pathways.trainingeval_training.png", width = 2100, height = 900, res = 300)
 df.train  %>%
 filter(epoch > 1) %>%
 ggplot(aes(x = epoch, y = mse, color = dataset, group = dataset)) +

@@ -1,4 +1,4 @@
-docker run -it -v /home/SHARED/PROJECTS/Episignatures:/home/SHARED/PROJECTS/Episignatures -w "$PWD" yocra3/episignatures_rsession:1.3  /bin/bash
+docker run -it -v /home/SHARED/PROJECTS/Episignatures:/home/SHARED/PROJECTS/Episignatures -w "$PWD" yocra3/episignatures_rsession:1.3  /bin/bash # nolint: error.
 R
 
 #'#################################################################################
@@ -21,6 +21,9 @@ library(org.Hs.eg.db)
 library(parallel)
 library(rjson)
 library(ggVennDiagram)
+library(NetActivity)
+library(NetActivityData)
+library(ggExtra)
 
 
 load("data/tcga_gexp_combat.Rdata")
@@ -29,40 +32,67 @@ genes <- read.table("./results/GTEx_coding/input_genes.txt")
 path.map <- read.table("results/GTEx_coding/go_kegg_filt2_gene_map.tsv", header = TRUE)
 path_N <- group_by(path.map, PathwayID) %>% summarize(N = n()) %>% mutate(category = PathwayID)
 
-prad.feat.all <- read.table("results/GTEx_coding_PRAD/paths_filt2_full_v3.11/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
-prad.feat.ctrl <- read.table("results/GTEx_coding_PRAD_ctrl/paths_filt2_full_v3.11/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+# prad.feat.all <- read.table("results/GTEx_coding_PRAD/paths_filt2_full_v3.11/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
+# prad.feat.ctrl <- read.table("results/GTEx_coding_PRAD_ctrl/paths_filt2_full_v3.11/model_features/prune_low_magnitude_dense.tsv", header = TRUE)
 
-paths <- read.table("results/GTEx_coding/paths_filt2_full_v3.11/model_trained/pathways_names.txt", header = TRUE)
-paths.vec <- as.character(paths[, 1])
-colnames(prad.feat.ctrl) <- colnames(prad.feat.all) <- paths.vec
+# paths <- read.table("results/GTEx_coding/paths_filt2_full_v3.11/model_trained/pathways_names.txt", header = TRUE)
+# paths.vec <- as.character(paths[, 1])
+# colnames(prad.feat.ctrl) <- colnames(prad.feat.all) <- paths.vec
 
-## Subset data
-prad <- gexp_tcga_combat[genes$V1, gexp_tcga_combat$project_id == "TCGA-PRAD"]
-prad.vst <- loadHDF5SummarizedExperiment("results/TCGA_gexp_coding_noPRAD/", prefix = "vsd_norm_prad")
+data(gtex_gokegg)
+gset_genes <- lapply(seq_len(nrow(gtex_gokegg)), function(x) colnames(gtex_gokegg)[which(gtex_gokegg[x, ] != 0)])
 
-## GO + KEGG
-path.cor <- sapply(seq_len(ncol(prad.feat.ctrl)), function(i) cor(prad.feat.all[prad$sample_type == "Solid Tissue Normal", i], prad.feat.ctrl[, i] ))
+
+
+## NetActivity
+prad.all <- gexp_tcga_combat[, gexp_tcga_combat$project_id == "TCGA-PRAD"]
+ddsSE <- DESeqDataSet(prad.all, design = ~  age_at_index + race  )
+vst.prad <- vst(ddsSE, blind=FALSE)
+
+preproc_prad_ctrl <- prepareSummarizedExperiment(vst.prad[, vst.prad$sample_type == "Solid Tissue Normal"], "gtex_gokegg")
+scores_prad_ctrl <- computeGeneSetScores(preproc_prad_ctrl, "gtex_gokegg")
+
+preproc_prad_all <- prepareSummarizedExperiment(vst.prad, "gtex_gokegg")
+scores_prad_all <- computeGeneSetScores(preproc_prad_all, "gtex_gokegg")
+path.cor <- sapply(seq_len(nrow(scores_prad_ctrl)), function(i) 
+  cor(t(assay(scores_prad_all[i, scores_prad_all$sample_type == "Solid Tissue Normal"])), t(assay(scores_prad_ctrl[i, ] ))))
+
+vst.prad_control <- vst.prad[, vst.prad$sample_type == "Solid Tissue Normal"]
+scores_prad_all.ctrl <- scores_prad_all[, scores_prad_all$sample_type == "Solid Tissue Normal"]
+
+
+cor_all_netactivity <- lapply(seq_len(length(gset_genes)), function(i) cor(t(assay(vst.prad_control[gset_genes[[i]], ])), t(assay(scores_prad_all.ctrl [i, ]))))
+cor_ctrl_netactivity <- lapply(seq_len(length(gset_genes)), function(i)
+  cor(t(assay(vst.prad_control[gset_genes[[i]], ])), t(assay(scores_prad_ctrl[i, ]))))
+cor_netActivity_internal <- unlist(Map(cor, cor_all_netactivity, cor_ctrl_netactivity, use = "complete.obs"))
+
+
 
 ## GSVA
 path_genes <- mclapply(paths.vec, function(x) subset(path.map, PathwayID == x & !is.na(Symbol))$Symbol, mc.cores = 10)
 names(path_genes) <- paths.vec
-gsva.all <- gsva(prad, path_genes, min.sz=5, max.sz=500, kcdf = "Poisson")
-gsva.ctrl <- gsva(prad[, prad$sample_type == "Solid Tissue Normal"], path_genes, min.sz=5, max.sz=500, kcdf = "Poisson")
+gsva.all <- gsva(prad.all, path_genes, min.sz=5, max.sz=500, kcdf = "Poisson")
+gsva.ctrl <- gsva(prad.all[, prad.all$sample_type == "Solid Tissue Normal"], path_genes, min.sz=5, max.sz=500, kcdf = "Poisson")
 gsva.all.ctrl <- gsva.all[, gsva.all$sample_type == "Solid Tissue Normal"]
 
 save(gsva.all, gsva.ctrl, file = "results/TCGA_PRAD/GSVA_allPRAD_values.Rdata")
 gsva.cor <- sapply(seq_len(nrow(gsva.all.ctrl)), function(i) cor(t(assay(gsva.all.ctrl[i, ])), t(assay(gsva.ctrl[i,])) ))
 
+cor_all_gsva <- lapply(seq_len(length(gset_genes)), function(i) cor(t(assay(vst.prad_control[gset_genes[[i]], ])), t(assay(gsva.all.ctrl[i, ]))))
+cor_ctrl_gsva <- lapply(seq_len(length(gset_genes)), function(i)
+  cor(t(assay(vst.prad_control[gset_genes[[i]], ])), t(assay(gsva.ctrl[i, ]))))
+cor_gsva_internal <- unlist(Map(cor, cor_all_gsva, cor_ctrl_gsva, use = "complete.obs"))
+
 
 ## hipathia
 hip_pathways <- load_pathways(species = "hsa")
 
-trans_data.all <- translate_data(prad.vst, "hsa")
+trans_data.all <- translate_data(prad.all, "hsa")
 exp_data.all <- normalize_data(trans_data.all)
 hip.all <- hipathia(exp_data.all, hip_pathways, decompose = FALSE, verbose = TRUE)
 hip.all_vals <- get_paths_data(hip.all )
 
-trans_data.ctrl <- translate_data(prad.vst[, prad.vst$sample_type == "Solid Tissue Normal" ], "hsa")
+trans_data.ctrl <- translate_data(prad.all[, prad.all$sample_type == "Solid Tissue Normal" ], "hsa")
 exp_data.ctrl <- normalize_data(trans_data.ctrl)
 hip.ctrl <- hipathia(exp_data.ctrl, hip_pathways, decompose = FALSE, verbose = TRUE)
 hip.ctrl_vals <- get_paths_data(hip.ctrl )
@@ -72,20 +102,92 @@ save(hip.all_vals, hip.ctrl_vals, file = "results/TCGA_PRAD/hipathia_allPRAD_val
 hip.all.ctrl <- hip.all_vals[, hip.all_vals$sample_type == "Solid Tissue Normal"]
 hip.cor <- sapply(seq_len(nrow(hip.all.ctrl)), function(i) cor(t(assay(hip.all.ctrl[i, ])), t(assay(hip.ctrl_vals[i,])) ))
 
-df.cor <- data.frame(cor = c(path.cor, gsva.cor, hip.cor),
+## Compute correlations
+hip_pathways <- load_pathways(species = "hsa")
+
+whole_genes <- lapply(hip_pathways$pathigraphs, function(x){
+  ig <- x$graph
+  genes_list <- V(ig)$genesList
+  names(genes_list) <- V(ig)$name
+  genes_list
+})
+names(whole_genes) <- NULL
+whole_genes <- unlist(whole_genes, recursive = FALSE)
+whole_genes_df <- data.frame(node = rep(names(whole_genes), lengths(whole_genes)),
+            GeneID = unlist(whole_genes)) %>%
+            filter(!is.na(GeneID) & GeneID != "/") %>%
+            as_tibble()
+
+all_effector <- lapply(hip_pathways$pathigraphs, function(x){
+  eff <- lapply(x$effector.subgraphs, function(x){
+    names(V(x))
+  })
+  data.frame(PathwayID = rep(names(x$effector.subgraphs), lengths(eff)),
+              node = unlist(eff))
+})
+all_effector <- Reduce(rbind, all_effector)
+
+hipathia_map <- right_join(all_effector, whole_genes_df, by = "node") %>%
+  as_tibble()
+
+hipathia_genes <- lapply(unique(hipathia_map$PathwayID), function(path) subset(hipathia_map, PathwayID == path)$GeneID)
+
+trans_data.all_ctrl <- trans_data.all[,  trans_data.all$sample_type == "Solid Tissue Normal"]
+cor_all_hip <- lapply(seq_len(length(hipathia_genes)),
+ function(i) cor(t(assay(trans_data.all_ctrl[rownames(trans_data.all_ctrl) %in% hipathia_genes[[i]], ])),  t(assay(hip.all.ctrl[i, ]))))
+
+cor_ctrl_hip <- lapply(seq_len(length(hipathia_genes)),
+ function(i) cor(t(assay(trans_data.ctrl[rownames(trans_data.ctrl) %in% hipathia_genes[[i]], ])),  t(assay(hip.ctrl_vals[i, ]))))
+
+
+cor_mod <- function(x, y){
+  if (sum(!is.na(x)) < 2 | sum(!is.na(y)) < 2){
+    return(NA)
+  }
+  if (length(x) != length(y)){
+    return(NA)
+  }
+  cor(x, y, use = "complete.obs")
+}
+
+cor_hip_internal <- unlist(Map(cor_mod, cor_all_hip, cor_ctrl_hip))
+
+
+df.cor <- tibble(replicability = c(path.cor, gsva.cor, hip.cor),
+  consistency = c(cor_netActivity_internal, cor_gsva_internal, cor_hip_internal),
   Method = rep(c("NetActivity", "GSVA", "Hipathia"), lengths(list(path.cor, gsva.cor, hip.cor)))) %>%
-  mutate(Method = factor(Method, levels = c("GSVA", "Hipathia", "NetActivity")))
+  mutate(Method = factor(Method, levels = c("GSVA", "Hipathia", "NetActivity"))) 
 
 #
-plot_stab <- ggplot(df.cor, aes(x = Method, y = cor)) +
-  geom_boxplot() +
-  ylab("Scores correlation") +
+
+
+plot_stab <- df.cor %>%
+  mutate(Replicability = cut(replicability, c(0, 0.7, 0.9, 1.1), c("Low/Inter.", "High", "Equivalent")),
+         Consistency = cut(consistency, c(-1.1, 0, 0.7, 0.9, 1.1), c("Opposite", "Low/Inter.", "High", "Equivalent"))) %>%
+  gather(Measure, Value, 4:5) %>%
+  filter(!is.na(Value)) %>%
+  mutate(Measure = recode(Measure, Replicability = "Score replicability", Consistency = "Definition consistency"),
+         Measure = factor(Measure, levels = c("Score replicability", "Definition consistency"))) %>%
+  group_by(Method, Measure, Value) %>% 
+  summarize(n = n()) %>%
+  group_by(Method, Measure) %>%
+  mutate(prop = n/sum(n)) %>%
+  ungroup() %>%
+  complete(Method, Measure, Value, fill = list(n = 0, prop = 0)) %>%
+  filter(!(Measure == "Score replicability" & Value == "Opposite")) %>%
+  ggplot(aes(x = Value, fill = Method, y = prop*100)) +
+  geom_bar(position = position_dodge(), stat = "identity") +
+  xlab("Gene Sets") +
+  ylab("Proportion (%)") +
+  facet_grid(. ~ Measure, scales = "free") +
+  ggtitle("Same dataset") +
+  coord_flip() +
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"),
-    text = element_text(size = 20))
-
-
-png("figures/PRAD_scores_stability.png", height = 240)
+        text = element_text(size = 16),
+        legend.position = "none")
+  
+png("figures/PRAD_score_stability.png", height = 1000, width = 2000, res = 300)
 plot_stab
 dev.off()
 
@@ -95,6 +197,9 @@ tapply(df.cor$cor, df.cor$Method, summary)
 df.cor %>%
   group_by(Method) %>%
   summarize(m = mean(cor > 0.95, na.rm = TRUE))
+
+
+
 
 ## Make panel
 load("results/GSE169038/de_genes_results.Rdata")
@@ -123,7 +228,7 @@ path.plot <- ggplot(comb_paths, aes(x = logFC.TCGA, y = logFC.GEO, col = Signif)
    x = -Inf, y = Inf, hjust = -0.3, vjust = 1.5), aes(label = label, x = x, y = y, hjust = hjust, vjust = vjust), col = "black", size = 6) +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"),
       legend.position = "none",
-    text = element_text(size = 20))
+    text = element_text(size = 16))
 
 
 
@@ -210,7 +315,7 @@ gene.plot <- ggplot(comb.genes, aes(x = log2FoldChange, y = logFC, col = Signif)
    x = -Inf, y = Inf, hjust = -0.3, vjust = 1.5), aes(label = label, x = x, y = y, hjust = hjust, vjust = vjust), col = "black", size = 6) +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"),
       legend.position = "none",
-    text = element_text(size = 20))
+    text = element_text(size = 16))
 
 png("figures/TCGAvsGEO_genes_logFC.png")
 gene.plot
@@ -246,7 +351,7 @@ gsva.plot <- ggplot(comb.gsva, aes(x = logFC.TCGA, y = logFC.GEO, col = Signif))
    x = -Inf, y = Inf, hjust = -0.3, vjust = 1.5), aes(label = label, x = x, y = y, hjust = hjust, vjust = vjust), col = "black", size = 6) +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"),
       legend.position = "none",
-    text = element_text(size = 20))
+    text = element_text(size = 16))
 
 png("figures/TCGAvsGEO_GSVA_logFC.png")
 gsva.plot
@@ -282,7 +387,7 @@ hip.plot <- ggplot(comb.hipathia, aes(x = statistic.TCGA, y = statistic.GEO, col
   geom_text(data =  data.frame(label = sprintf("N = %d \n r = %.2f", nrow(comb.hipathia), cor(comb.hipathia$statistic.TCGA, comb.hipathia$statistic.GEO)),
    x = -Inf, y = Inf, hjust = -0.3, vjust = 1.5), aes(label = label, x = x, y = y, hjust = hjust, vjust = vjust), col = "black", size = 6) +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"),
-    text = element_text(size = 20))
+    text = element_text(size = 16))
 
 png("figures/TCGAvsGEO_hipathia_stat.png")
 hip.plot
@@ -300,19 +405,10 @@ prop.table(table(sign(comb.hipathia$statistic.TCGA) == sign(comb.hipathia$statis
 legend <- get_legend(
   # create some space to the left of the legend
   hip.plot + theme(legend.box.margin = margin(0, 0, 0, 12),
-                    text = element_text(size = 25))+
+                    text = element_text(size = 16))+
                     guides(color = guide_legend(override.aes = list(size = 8)))
 )
 
-
-png("figures/TCGAvsGEO_panel.png", width = 950, height = 1025)
-plot_grid(plot_stab,
-  plot_grid(
-    plot_grid(gene.plot, gsva.plot, hip.plot + theme(legend.position = "none"), path.plot, ncol = 2, labels = LETTERS[2:5], label_size = 20),
-    legend, ncol = 2, rel_widths = c(5, 1)
-  )
-, ncol = 1, labels = c("A", ""), rel_heights = c(1, 3))
-dev.off()
 
 
 ## Compare GSVA vs GO+kegg
@@ -362,7 +458,7 @@ gsva_path_df %>% gather(Dataset, logFC, c(3:4, 6:7)) %>%
     theme_bw()
 dev.off()
 
-png("figures/TCGAvsGEO_GSVA_GOmodel_comp_prop.png", width = 1000)
+png("figures/TCGAvsGEO_GSVA_GOmodel_comp_prop.png", width = 2000, height = 1500, res = 300)
 gsva_path_df %>%
     gather(Dataset, Proportion, 11:12) %>%
     mutate(GSVA.Sig = ifelse(Dataset == "GEO_prop",
@@ -379,7 +475,7 @@ gsva_path_df %>%
     geom_density() +
     facet_grid(Method ~ Dataset) +
     theme_bw() +
-    xlab("Propotion of genes with higher expression in gleason") +
+    xlab("Prop. of genes with higher expression in gleason high") +
     geom_vline(xintercept = 0.5)
 dev.off()
 
@@ -432,3 +528,118 @@ venn_both <- ggVennDiagram(list(GSVA = subset(gsva_path_df, Signif.GSVA %in% c("
 png("figures/TCGAvsGEO_GOKEGG_overlap.png", width = 1200, height = 300)
 plot_grid(venn_tcga, venn_geo, venn_both, nrow = 1, labels = LETTERS[1:3])
 dev.off()
+
+
+
+## Compare concordance in gene set score definition
+load("results/TCGA_PRAD/vst_SE.Rdata")
+load("results/TCGA_PRAD/NetActivity_scores.Rdata")
+load("results/GSE169038/NetActivity_scores.Rdata")
+load("results/GSE169038/GSVA_results.Rdata")
+
+load("results/TCGA_BRCA/vst_SE.Rdata")
+load("results/TCGA_BRCA/NetActivity_scores.Rdata")
+load("results/TCGA_PRAD/GSVA_results.Rdata")
+load("results/TCGA_BRCA/GSVA_results.Rdata")
+
+gse169038_se <- loadHDF5SummarizedExperiment("results/GSE169038/", prefix = "network_genes")
+assay(gse169038_se) <- data.matrix(assay(gse169038_se))
+gse169038_se$primary <- gsub("primary gleason: ", "", gse169038_se$characteristics_ch1.1)
+gse169038_se$secondary <- gsub("secondary gleason: ", "", gse169038_se$characteristics_ch1.2)
+gse169038_se$primary <- as.numeric(ifelse(gse169038_se$primary == "--", 1, gse169038_se$primary))
+gse169038_se$secondary <- as.numeric(ifelse(gse169038_se$secondary == "--", 1, gse169038_se$secondary))
+gse169038_se_filt <- gse169038_se[, !(gse169038_se$primary == 1 |  gse169038_se$secondary == 1)]
+
+data(gtex_gokegg)
+gset_genes <- lapply(seq_len(nrow(gtex_gokegg)), function(x) colnames(gtex_gokegg)[which(gtex_gokegg[x, ] != 0)])
+
+prad_input <- vst.prad[colnames(gtex_gokegg), ]
+brca_input <- vst_brca[colnames(gtex_gokegg), ]
+
+cor_prad_netactivity <- lapply(seq_len(length(gset_genes)), function(i) cor(t(assay(prad_input[gset_genes[[i]], ])), t(assay(scores_prad[i, ]))))
+cor_geo_netactivity <- lapply(seq_len(length(gset_genes)), function(i) cor(t(assay(gse169038_se_filt[gset_genes[[i]], ])), t(assay(gse169038_scores[i, ]))))
+cor_brca_netactivity <- lapply(seq_len(length(gset_genes)), function(i) cor(t(assay(brca_input[gset_genes[[i]], ])), t(assay(scores_brca[i, ]))))
+cor_netActivity_rnaseq <- unlist(Map(cor, cor_prad_netactivity, cor_brca_netactivity, use = "complete.obs"))
+cor_netActivity_prad <- unlist(Map(cor, cor_prad_netactivity, cor_geo_netactivity, use = "complete.obs"))
+
+
+cor_prad_gsva <- lapply(seq_len(length(gset_genes)), function(i) cor(t(assay(prad_input[gset_genes[[i]], ])),  t(assay(prad_gsva[i, ]))))
+cor_geo_gsva <- lapply(seq_len(length(gset_genes)), function(i) cor(t(assay(gse169038_se_filt[gset_genes[[i]], ])), geo_gsva[i, ]))
+cor_brca_gsva <- lapply(seq_len(length(gset_genes)), function(i) cor(t(assay(brca_input[gset_genes[[i]], ])), t(assay(brca_gsva[i, ]))))
+cor_gsva_rnaseq <- unlist(Map(cor, cor_prad_gsva, cor_brca_gsva, use = "complete.obs"))
+cor_gsva_prad <- unlist(Map(cor, cor_prad_gsva, cor_geo_gsva, use = "complete.obs"))
+
+### Hipathia
+load("results/TCGA_PRAD/hipathia.res.Rdata")
+load("results/TCGA_BRCA/hipathia.res.Rdata")
+load("results/GSE169038/hipathia.res.Rdata")
+
+prad_trans <- translate_data(vst.prad, "hsa")
+brca_trans <- translate_data(vst_brca, "hsa")
+geo_trans <- translate_data(gse169038_se_filt, "hsa")
+
+
+hip.geo <- hip.geo_path[, colnames(geo_trans) ]
+
+cor_prad_hip <- lapply(seq_len(length(hipathia_genes)),
+ function(i) cor(t(assay(prad_trans[rownames(prad_trans) %in% hipathia_genes[[i]], ])),  t(assay(hip.prad_vals[i, ]))))
+cor_geo_hip <- lapply(seq_len(length(hipathia_genes)), 
+  function(i) cor(t(assay(geo_trans[rownames(geo_trans) %in% hipathia_genes[[i]], ])), t(assay(hip.geo[i, ]))))
+cor_brca_hip <- lapply(seq_len(length(hipathia_genes)), function(i) cor(t(assay(brca_trans[rownames(brca_trans) %in% hipathia_genes[[i]], ])), t(assay(hip.brca_vals[i, ]))))
+
+cor_hip_rnaseq <- unlist(Map(cor_mod, cor_prad_hip, cor_brca_hip))
+cor_hip_prad <- unlist(Map(cor_mod, cor_prad_hip, cor_geo_hip))
+
+df_reprod <- tibble(Technology = c(cor_netActivity_prad, cor_gsva_prad, cor_hip_prad),
+                    Tumor = c(cor_netActivity_rnaseq, cor_gsva_rnaseq, cor_hip_rnaseq),
+                    Method = rep(c("NetActivity", "GSVA", "Hipathia"), lengths(list(cor_netActivity_prad, cor_gsva_prad, cor_hip_prad))),
+                    GeneSet = c(rownames(scores_prad), rownames(prad_gsva), rownames(hip.prad_vals))) %>%
+              gather(Dataset, Reproducibility, 1:2) %>%
+              filter(!is.na(Reproducibility)) %>%
+              mutate(Replicability = cut(Reproducibility, c(-1.1, 0, 0.7, 0.9, 1.1), c("Opposite", "Low/Inter.", "High", "Equivalent")),
+                     Replicability = factor(Replicability, levels = c("Equivalent", "High", "Low/Inter.", "Opposite"))) %>%
+              group_by(Method, Dataset, Replicability) %>% 
+              summarize(n = n()) %>%
+              group_by(Method, Dataset) %>%
+              mutate(prop = n/sum(n)) %>%
+              ungroup() %>%
+              complete(Method, Dataset, Replicability, fill = list(n = 0, prop = 0))
+
+plot_reprod <- ggplot(df_reprod, aes(x = Replicability, fill = Method, y = prop*100)) +
+  geom_bar(position = position_dodge(), stat = "identity") +
+  xlab("") +
+  ylab("Proportion (%)") +
+  facet_grid(. ~ Dataset, scales = "free") +
+  ggtitle("Different datasets") +
+  coord_flip() +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        text = element_text(size = 16))
+  
+# png("figures/reproducibility_plot.png", width = 1200, height = 900, res = 300)
+# plot_reprod
+# dev.off()
+
+
+png("figures/TCGAvsGEO_panel.png", width = 4000, height = 3200, res = 300)
+plot_grid(
+  plot_grid(plot_stab, plot_reprod, nrow = 1, labels = c("A", "B"), label_size = 16, rel_widths = c(1, 1.3)),
+  plot_grid(
+    plot_grid(gene.plot, gsva.plot, hip.plot + theme(legend.position = "none"), path.plot, ncol = 2, labels = LETTERS[3:6], label_size = 16),
+    legend, ncol = 2, rel_widths = c(5, 1)
+  )
+, ncol = 1, rel_heights = c(1, 3))
+dev.off()
+
+
+
+df_reprod %>%
+  group_by(Method, Dataset) %>%
+  summarize(m = mean(Reproducibility > 0, na.rm = TRUE),
+            m30 = mean(Reproducibility > 0.3, na.rm = TRUE),
+            m70 = mean(Reproducibility > 0.7, na.rm = TRUE))
+
+tapply(cor_netActivity_prad[comb_paths$category], comb_paths$Signif, summary)
+tapply(cor_gsva_prad[comb.gsva$category], comb.gsva$Signif, summary)
+
+comb_paths$repr <- cor_netActivity_prad[comb_paths$category]

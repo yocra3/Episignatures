@@ -157,6 +157,8 @@ df.path_sel <- Reduce(rbind, list(main, pre, unfrozen, all_train, all_nofrozen, 
                             "unfrozen" = "Step 1 + step 3", "Whole training, without adaptation" = "Step 1 + step 3"),
          training = factor(training, levels = c("Step 1", "Step 1 + step 3",  "Step 1 + step 2 + step 3")))
 
+save(df.path_sel, file = "results/manuscript/df_gtex_training_replicability.Rdata")
+
 plot_rep <- ggplot(df.path_sel, aes(x = training, y = minCor)) +
  geom_boxplot() +
  scale_x_discrete(name = "") +
@@ -241,6 +243,11 @@ df.train %>%
   scale_y_continuous(name = "Replicability")
 dev.off()
 
+## Plot correlation of worse path
+path_vals <- readPathways("paths_filt3_full_v3.6", sufix = c("", letters[1:5]), path_name = paths.vec)
+path_mat <- sapply(path_vals, function(m) m[, 427 ])
+path_mat2 <- path_mat
+path_mat2[, 5] <-  - path_mat2[, 5]
 
 
 #
@@ -289,11 +296,6 @@ dev.off()
 # dev.off()
 
 
-## Plot correlation of worse path
-path_vals <- readPathways("paths_filt3_full_v3.6", sufix = c("", letters[1:5]), path_name = paths.vec)
-path_mat <- sapply(path_vals, function(m) m[, 427 ])
-path_mat2 <- path_mat
-path_mat2[, 5] <-  - path_mat2[, 5]
 
 #'#################################################################################
 ## Dropouts
@@ -376,134 +378,134 @@ path_mat2[, 5] <-  - path_mat2[, 5]
 ## From here, old!!
 ##################################################################################################
 ## Load kegg - primed
-paths <- read.table("results/TCGA_gexp_kegg/v1.1/model_trained/pathways_names.txt", header = TRUE)
-paths.vec <- as.character(paths[, 1])
+# paths <- read.table("results/TCGA_gexp_kegg/v1.1/model_trained/pathways_names.txt", header = TRUE)
+# paths.vec <- as.character(paths[, 1])
 
-primed <- readPathways("kegg_v3.1", letters[1:5], paths.vec)
+# primed <- readPathways("kegg_v3.1", letters[1:5], paths.vec)
 
-primed.cors <- sapply(paths.vec, pathwayCorr, path_list = primed)
-colnames(primed.cors) <- paths.vec
-rownames(primed.cors) <- c("1-2", "1-3", "2-3", "1-4", "2-4", "3-4", "1-5", "2-5", "3-5", "4-5")
+# primed.cors <- sapply(paths.vec, pathwayCorr, path_list = primed)
+# colnames(primed.cors) <- paths.vec
+# rownames(primed.cors) <- c("1-2", "1-3", "2-3", "1-4", "2-4", "3-4", "1-5", "2-5", "3-5", "4-5")
 
-df.primed <- makeDFsum(primed.cors, "Dropout 0%")
+# df.primed <- makeDFsum(primed.cors, "Dropout 0%")
 
-## Get dfs for all dropouts
-cors.drops <- lapply(6:9, function(x){
-  mod <- paste0("kegg_v2.", x)
-  drop20 <- readPathways(mod)
+# ## Get dfs for all dropouts
+# cors.drops <- lapply(6:9, function(x){
+#   mod <- paste0("kegg_v2.", x)
+# #   drop20 <- readPathways(mod)
 
-  cors20 <- sapply(paths.vec, pathwayCorr, path_list = drop20)
-  colnames(cors20) <- paths.vec
-  rownames(cors20 ) <- c("1-2", "1-3", "2-3", "1-4", "2-4", "3-4", "1-5", "2-5", "3-5", "4-5")
+# #   cors20 <- sapply(paths.vec, pathwayCorr, path_list = drop20)
+# #   colnames(cors20) <- paths.vec
+# #   rownames(cors20 ) <- c("1-2", "1-3", "2-3", "1-4", "2-4", "3-4", "1-5", "2-5", "3-5", "4-5")
 
-  cors20
-})
-
-
-## Get dfs for all dropouts
-df.drops <- Map(makeDFsum, cors.drops, paste("Dropout", c("20%", "50%", "75%", "90%")))
-df.drops$cot <- df.primed
-df.all <- Reduce(rbind, df.drops ) %>%
-  left_join(mutate(kegg.df.com, path = pathID) %>% select(path, top_cat, category), by = "path")
+# #   cors20
+# # })
 
 
-png("figures/minCor_pathwayCat.png", width = 1000)
-df.all %>%
-ggplot(aes(x = top_cat, y = minCor, color = model)) +
-geom_boxplot() +
-theme_bw()
-dev.off()
-
-png("figures/minCor_pathwayCat2.png", width = 3000, height = 1000)
-df.all %>%
-ggplot(aes(x = category, y = minCor, color = model)) +
-geom_boxplot() +
-theme_bw() +
-facet_wrap(~top_cat, scales = "free_x", nrow = 3)
-dev.off()
+# ## Get dfs for all dropouts
+# df.drops <- Map(makeDFsum, cors.drops, paste("Dropout", c("20%", "50%", "75%", "90%")))
+# df.drops$cot <- df.primed
+# df.all <- Reduce(rbind, df.drops ) %>%
+#   left_join(mutate(kegg.df.com, path = pathID) %>% select(path, top_cat, category), by = "path")
 
 
-df.all %>% select(-class) %>% spread(model, minCor) %>%
-select(-path) %>% data.matrix() %>%
-heatmap(scale = "none")
+# png("figures/minCor_pathwayCat.png", width = 1000)
+# df.all %>%
+# ggplot(aes(x = top_cat, y = minCor, color = model)) +
+# geom_boxplot() +
+# theme_bw()
+# dev.off()
 
-df.all %>% select(-minCor) %>% spread(model, class) %>%
-select(-path) %>% data.matrix() %>%
-heatmap(scale = "none")
-
-df.sum <- df.all %>% group_by(path) %>% summarize(nlow = sum(class == "low"), nhigh = sum(class == "High"))
-goodPaths <- subset(df.sum, nlow == 0)$path
-
-
-## Filter pathways kegg
-paths.filt <- read.table("results/TCGA_gexp_norm/kegg_filt_v3.1/model_trained/pathways_names.txt", header = TRUE)
-paths.filt <- as.character(paths.filt[, 1])
-
-primed.filt <- readPathways("kegg_filt_v3.1", letters[1:5], paths.filt)
-
-primed.filt.cors <- sapply(paths.filt, pathwayCorr, path_list = primed.filt)
-colnames(primed.filt.cors) <- paths.filt
-rownames(primed.filt.cors) <- c("1-2", "1-3", "2-3", "1-4", "2-4", "3-4", "1-5", "2-5", "3-5", "4-5")
-
-df.primed.filt <- makeDFsum(primed.filt.cors, "Dropout 0%")
-a <- left_join(df.primed.filt, df.primed, by = "path")
-table(filtered = a$class.x, original = a$class.y)
-
-## Get dfs for all dropouts
-cors.drops <- lapply(6:9, function(x){
-  mod <- paste0("kegg_v2.", x)
-  drop20 <- readPathways(mod)
-
-  cors20 <- sapply(paths.vec, pathwayCorr, path_list = drop20)
-  colnames(cors20) <- paths.vec
-  rownames(cors20 ) <- c("1-2", "1-3", "2-3", "1-4", "2-4", "3-4", "1-5", "2-5", "3-5", "4-5")
-
-  cors20
-})
+# png("figures/minCor_pathwayCat2.png", width = 3000, height = 1000)
+# df.all %>%
+# ggplot(aes(x = category, y = minCor, color = model)) +
+# geom_boxplot() +
+# theme_bw() +
+# facet_wrap(~top_cat, scales = "free_x", nrow = 3)
+# dev.off()
 
 
-## Get dfs for all dropouts
-df.drops <- Map(makeDFsum, cors.drops, paste("Dropout", c("20%", "50%", "75%", "90%")))
-df.drops$cot <- df.primed
-df.all <- Reduce(rbind, df.drops ) %>%
-  left_join(mutate(kegg.df.com, path = pathID) %>% select(path, top_cat, category), by = "path")
+# df.all %>% select(-class) %>% spread(model, minCor) %>%
+# select(-path) %>% data.matrix() %>%
+# heatmap(scale = "none")
+
+# df.all %>% select(-minCor) %>% spread(model, class) %>%
+# select(-path) %>% data.matrix() %>%
+# heatmap(scale = "none")
+
+# df.sum <- df.all %>% group_by(path) %>% summarize(nlow = sum(class == "low"), nhigh = sum(class == "High"))
+# goodPaths <- subset(df.sum, nlow == 0)$path
+
+
+# ## Filter pathways kegg
+# paths.filt <- read.table("results/TCGA_gexp_norm/kegg_filt_v3.1/model_trained/pathways_names.txt", header = TRUE)
+# paths.filt <- as.character(paths.filt[, 1])
+
+# primed.filt <- readPathways("kegg_filt_v3.1", letters[1:5], paths.filt)
+
+# primed.filt.cors <- sapply(paths.filt, pathwayCorr, path_list = primed.filt)
+# colnames(primed.filt.cors) <- paths.filt
+# rownames(primed.filt.cors) <- c("1-2", "1-3", "2-3", "1-4", "2-4", "3-4", "1-5", "2-5", "3-5", "4-5")
+
+# df.primed.filt <- makeDFsum(primed.filt.cors, "Dropout 0%")
+# a <- left_join(df.primed.filt, df.primed, by = "path")
+# table(filtered = a$class.x, original = a$class.y)
+
+# ## Get dfs for all dropouts
+# cors.drops <- lapply(6:9, function(x){
+#   mod <- paste0("kegg_v2.", x)
+#   drop20 <- readPathways(mod)
+
+#   cors20 <- sapply(paths.vec, pathwayCorr, path_list = drop20)
+#   colnames(cors20) <- paths.vec
+#   rownames(cors20 ) <- c("1-2", "1-3", "2-3", "1-4", "2-4", "3-4", "1-5", "2-5", "3-5", "4-5")
+
+#   cors20
+# })
+
+
+# ## Get dfs for all dropouts
+# df.drops <- Map(makeDFsum, cors.drops, paste("Dropout", c("20%", "50%", "75%", "90%")))
+# df.drops$cot <- df.primed
+# df.all <- Reduce(rbind, df.drops ) %>%
+#   left_join(mutate(kegg.df.com, path = pathID) %>% select(path, top_cat, category), by = "path")
 
 
 
-## hipathia
-paths.hip <- read.table("results/TCGA_gexp_norm/hipathia_v3.1/model_trained/pathways_names.txt", header = TRUE, sep = "\t")
-paths.hip <- c(as.character(paths.hip[, 1]), "hsa")
+# ## hipathia
+# paths.hip <- read.table("results/TCGA_gexp_norm/hipathia_v3.1/model_trained/pathways_names.txt", header = TRUE, sep = "\t")
+# paths.hip <- c(as.character(paths.hip[, 1]), "hsa")
 
 
-## Get dfs for all dropouts
-hip.cors.drops <- lapply(6:9, function(x){
-  mod <- paste0("hipathia_v2.", x)
-  drop20 <- readPathways(mod, letters[1:5], paths.hip)
+# ## Get dfs for all dropouts
+# hip.cors.drops <- lapply(6:9, function(x){
+#   mod <- paste0("hipathia_v2.", x)
+#   drop20 <- readPathways(mod, letters[1:5], paths.hip)
 
-  cors20 <- sapply(paths.hip, pathwayCorr, path_list = drop20)
-  colnames(cors20) <- paths.hip
-  rownames(cors20 ) <- c("1-2", "1-3", "2-3", "1-4", "2-4", "3-4", "1-5", "2-5", "3-5", "4-5")
+#   cors20 <- sapply(paths.hip, pathwayCorr, path_list = drop20)
+#   colnames(cors20) <- paths.hip
+#   rownames(cors20 ) <- c("1-2", "1-3", "2-3", "1-4", "2-4", "3-4", "1-5", "2-5", "3-5", "4-5")
 
-  cors20
-})
-drop0 <- readPathways("hipathia_v3.1", letters[1:5], paths.hip)
-cors0 <- sapply(paths.hip, pathwayCorr, path_list = drop0)
-colnames(cors0) <- paths.hip
-rownames(cors0 ) <- c("1-2", "1-3", "2-3", "1-4", "2-4", "3-4", "1-5", "2-5", "3-5", "4-5")
-df.0 <- makeDFsum(cors0, "Dropout 0%")
-
-
-## Get dfs for all dropouts
-df.drops.hip <- Map(makeDFsum, hip.cors.drops, paste("Dropout", c("20%", "50%", "75%", "90%")))
-
-df.drops.hip$cot <- df.0
-df.hip.all <- Reduce(rbind, df.drops.hip ) %>%
-  mutate(pathway = gsub("-[0-9 ]*$", "", path))
-
-df.sum.hip <- df.hip.all %>% group_by(path, pathway) %>% summarize(nlow = sum(class == "low"), nhigh = sum(class == "High"))
-table(low = df.sum.hip$nlow, high =  df.sum.hip$nhigh)
+#   cors20
+# })
+# drop0 <- readPathways("hipathia_v3.1", letters[1:5], paths.hip)
+# cors0 <- sapply(paths.hip, pathwayCorr, path_list = drop0)
+# colnames(cors0) <- paths.hip
+# rownames(cors0 ) <- c("1-2", "1-3", "2-3", "1-4", "2-4", "3-4", "1-5", "2-5", "3-5", "4-5")
+# df.0 <- makeDFsum(cors0, "Dropout 0%")
 
 
-df.sum.hip2 <- df.sum.hip %>% group_by(pathway) %>%
-  summarize(nHigh = sum(nhigh > 0), nlow = sum(nlow > 2), nPaths = n())
-filter(df.sum.hip2, gsub("P-", "", pathway) %in% cancer.keg)
+# ## Get dfs for all dropouts
+# df.drops.hip <- Map(makeDFsum, hip.cors.drops, paste("Dropout", c("20%", "50%", "75%", "90%")))
+
+# df.drops.hip$cot <- df.0
+# df.hip.all <- Reduce(rbind, df.drops.hip ) %>%
+#   mutate(pathway = gsub("-[0-9 ]*$", "", path))
+
+# df.sum.hip <- df.hip.all %>% group_by(path, pathway) %>% summarize(nlow = sum(class == "low"), nhigh = sum(class == "High"))
+# table(low = df.sum.hip$nlow, high =  df.sum.hip$nhigh)
+
+
+# df.sum.hip2 <- df.sum.hip %>% group_by(pathway) %>%
+#   summarize(nHigh = sum(nhigh > 0), nlow = sum(nlow > 2), nPaths = n())
+# filter(df.sum.hip2, gsub("P-", "", pathway) %in% cancer.keg)

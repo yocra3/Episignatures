@@ -421,3 +421,10 @@ nextflow run workflows/train_model.nf --hdf5_file  results/GTEx/all_reshaped_sta
 nextflow run workflows/train_model.nf --hdf5_file  results/GTEx/all_reshaped_standardized.h5 \
 --name GTEx_coding --params_name autoencod_v2.3  --step features \
 --model  results/GTEx_coding/autoencod_v2.3/model_trained/GTEx_coding -resume -profile docker
+
+
+## Modelo para Kike
+nextflow run workflows/train_model.nf --hdf5_file results/Kike/all_reshaped_standardized.h5 \
+--name Kike --params_name main_model --step train_biopathways --probes results/Kike/input_genes.txt \
+--autoencoder autoencoder --network_params conf/network_params/params_dnn_gexp_pathway_network3_v11.py \
+--network conf/network_params/dnn_gexp_autoencod_pathway_network3.py --cpgmap results/GTEx_coding/go_kegg_filt2_gene_map.tsv -resume -profile docker
