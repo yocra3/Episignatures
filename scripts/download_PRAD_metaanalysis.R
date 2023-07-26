@@ -23,6 +23,9 @@ options(timeout=10000)
 data(gtex_gokegg)
 sel_genes <- colnames(gtex_gokegg)
 
+data(tcga_gokegg)
+sel_genes_tcga <- colnames(tcga_gokegg)
+
 ## GSE46691 - array
 ### Download CEL files from web
 
@@ -68,6 +71,11 @@ gse46691_prep <- prepareSummarizedExperiment(gse46691_ensemb, "gtex_gokegg")
 gse46691_scores <- computeGeneSetScores(gse46691_prep, "gtex_gokegg")
 save(gse46691_scores, file = "results/preprocess/GSE46691/GSE46691_scores.Rdata")
 
+### TCGA
+gse46691_prep_tcga <- prepareSummarizedExperiment(gse46691_ensemb, "tcga_gokegg")
+gse46691_scores_tcga <- computeGeneSetScores(gse46691_prep_tcga, "tcga_gokegg")
+save(gse46691_scores_tcga, file = "results/preprocess/GSE46691/GSE46691_scores_tcga.Rdata")
+
 ## GSE141551 - array
 gse141551 <- getGEO("GSE141551")[[1]]
 gse141551 <- gse141551[[1]]
@@ -92,6 +100,11 @@ gse141551_prep <- prepareSummarizedExperiment(gse141551_se, "gtex_gokegg")
 gse141551_scores <- computeGeneSetScores(gse141551_prep, "gtex_gokegg")
 
 save(gse141551_scores, file = "results/preprocess/GSE141551/GSE141551_scores.Rdata")
+
+### TCGA
+gse141551_prep_tcga <- prepareSummarizedExperiment(gse141551_se, "tcga_gokegg")
+gse141551_scores_tcga <- computeGeneSetScores(gse141551_prep_tcga, "tcga_gokegg")
+save(gse141551_scores_tcga, file = "results/preprocess/GSE141551/GSE141551_scores_tcga.Rdata")
 
 
 ## GSE21034 - array
@@ -143,6 +156,11 @@ gse21034_prep <- prepareSummarizedExperiment(gse21034_ensemb, "gtex_gokegg")
 gse21034_scores <- computeGeneSetScores(gse21034_prep, "gtex_gokegg")
 save(gse21034_scores, file = "results/preprocess/GSE21034/GSE21034_scores.Rdata")
 
+### TCGA
+gse21034_prep_tcga <- prepareSummarizedExperiment(gse21034_ensemb, "tcga_gokegg")
+gse21034_scores_tcga <- computeGeneSetScores(gse21034_prep_tcga, "tcga_gokegg")
+save(gse21034_scores_tcga, file = "results/preprocess/GSE21034/GSE21034_scores_tcga.Rdata")
+
 ## GSE70768 - array
 gse70768 <- getGEO("GSE70768")[[1]]
 gse70768_se <- SummarizedExperiment(exprs(gse70768), rowData = fData(gse70768), colData = pData(gse70768))
@@ -171,6 +189,10 @@ gse70768_scores <- computeGeneSetScores(gse70768_prep, "gtex_gokegg")
 
 save(gse70768_scores, file = "results/preprocess/GSE70768/GSE70768_scores.Rdata")
 
+### TCGA
+gse70768_prep_tcga <- prepareSummarizedExperiment(gse70768_se_filt, "tcga_gokegg")
+gse70768_scores_tcga <- computeGeneSetScores(gse70768_prep_tcga, "tcga_gokegg")
+save(gse70768_scores_tcga, file = "results/preprocess/GSE70768/GSE70768_scores_tcga.Rdata")
 
 ## GSE70769 - array
 gse70769 <- getGEO("GSE70769")[[1]]
@@ -199,6 +221,10 @@ gse70769_scores <- computeGeneSetScores(gse70769_prep, "gtex_gokegg")
 
 save(gse70769_scores, file = "results/preprocess/GSE70769/GSE70769_scores.Rdata")
 
+### TCGA
+gse70769_prep_tcga <- prepareSummarizedExperiment(gse70769_se_filt, "tcga_gokegg")
+gse70769_scores_tcga <- computeGeneSetScores(gse70769_prep_tcga, "tcga_gokegg")
+save(gse70769_scores_tcga, file = "results/preprocess/GSE70769/GSE70769_scores_tcga.Rdata")
 
 ## GSE183019 - RNAseq
 gse183019  <- getGEO("GSE183019")[[1]]
@@ -231,6 +257,13 @@ gse183019_scores <- computeGeneSetScores(gse183019_prep, "gtex_gokegg")
 
 save(gse183019_scores, file = "results/preprocess/GSE183019/GSE183019_scores.Rdata")
 
+### TCGA
+gse183019_prep_tcga <- prepareSummarizedExperiment(gse183019_vst, "tcga_gokegg")
+gse183019_scores_tcga <- computeGeneSetScores(gse183019_prep_tcga, "tcga_gokegg")
+save(gse183019_scores_tcga, file = "results/preprocess/GSE183019/GSE183019_scores_tcga.Rdata")
+
+
+
 ## GSE201284 - RNAseq
 gse201284  <- getGEO("GSE201284")[[1]]
 colnames(gse201284) <- gse201284$description.3
@@ -261,3 +294,8 @@ gse201284_prep <- prepareSummarizedExperiment(gse201284_vst_filt, "gtex_gokegg")
 gse201284_scores <- computeGeneSetScores(gse201284_prep, "gtex_gokegg")
 
 save(gse201284_scores, file = "results/preprocess/GSE201284/GSE201284_scores.Rdata")
+
+### TCGA
+gse201284_prep_tcga <- prepareSummarizedExperiment(gse201284_vst, "tcga_gokegg")
+gse201284_scores_tcga <- computeGeneSetScores(gse201284_prep_tcga, "tcga_gokegg")
+save(gse201284_scores_tcga, file = "results/preprocess/GSE201284/GSE201284_scores_tcga.Rdata")

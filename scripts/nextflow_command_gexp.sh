@@ -412,6 +412,31 @@ nextflow run workflows/train_model.nf --hdf5_file results/GTEx/all_reshaped_stan
 --model  results/GTEx_coding/paths_filt2_full_predense_v6.2${i}/model_trained/GTEx_coding -profile docker
 done
 
+
+# Train GTEx without pre-training
+nextflow run workflows/train_model.nf --hdf5_file results/GTEx/all_reshaped_standardized.h5 \
+--name GTEx_coding --params_name paths_filt2_full_noprime_v3.12 --step train_biopathways --probes results/GTEx/input_genes.txt \
+--autoencoder autoencoder --network_params conf/network_params/params_dnn_gexp_pathway_network3_v12.py \
+--network conf/network_params/dnn_gexp_autoencod_pathway_network3.py --cpgmap results/GTEx_coding/go_kegg_filt2_gene_map.tsv  -profile docker
+
+nextflow run workflows/train_model.nf --hdf5_file results/GTEx/all_reshaped_standardized.h5 \
+--name GTEx_coding --params_name paths_filt2_full_noprime_v3.12 --step features \
+--model  results/GTEx_coding/paths_filt2_full_noprime_v3.12/model_trained/GTEx_coding -resume -profile docker
+
+for i in {a..e}
+do
+echo comb_paths_v3.8${i}
+nextflow run workflows/train_model.nf --hdf5_file  results/GTEx/all_reshaped_standardized.h5 \
+--name GTEx_coding --params_name paths_filt2_full_noprime_v3.12${i} --step train_biopathways --probes results/GTEx/input_genes.txt \
+--autoencoder autoencoder --network_params conf/network_params/params_dnn_gexp_pathway_network3_v12.py \
+--network conf/network_params/dnn_gexp_autoencod_pathway_network3.py --cpgmap results/GTEx_coding/go_kegg_filt2_gene_map.tsv  -profile docker
+
+nextflow run workflows/train_model.nf --hdf5_file results/GTEx/all_reshaped_standardized.h5 \
+--name GTEx_coding --params_name paths_filt2_full_noprime_v3.12${i}  --step features \
+--model  results/GTEx_coding/paths_filt2_full_noprime_v3.12${i}/model_trained/GTEx_coding -profile docker
+done
+
+
 ## Train GTEx autoencoder without pathways
 nextflow run workflows/train_model.nf --hdf5_file  results/GTEx/all_reshaped_standardized.h5 \
 --name GTEx_coding --params_name autoencod_v2.3 --step train --probes results/GTEx/input_genes.txt \

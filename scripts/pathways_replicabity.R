@@ -117,6 +117,8 @@ drop_full <- readCors("paths_filt2_full_drop_prime_v3.9", c("", letters[1:5]), p
 unfrozen <- readCors("paths_filt2_unfrozen_v3.10", c("", letters[1:5]), paths.vec, "Selected gene sets") %>%
   mutate(training = "Step 1 + step 3")
 
+no_prime <- readCors("paths_filt2_full_noprime_v3.12", c("", letters[1:5]), paths.vec, "Selected gene sets") %>%
+  mutate(training = "Step 3")
 
 # post <- readCors("kegg_filt2_v4.2", c("", letters[1:5]), paths.vec, "Pathway + Dense")  %>%
 #   mutate(training = "primed")
@@ -172,6 +174,40 @@ plot_rep <- ggplot(df.path_sel, aes(x = training, y = minCor)) +
 png("figures/minCor_pretraning_comp.png", height = 300, width = 1000)
 plot_rep
 dev.off()
+
+
+
+
+png("figures/robustness_goSelection.png", height = 900, width = 2500, res = 300)
+df.path_sel %>%
+  filter(training == "Step 1 + step 2 + step 3") %>%
+  ggplot(aes(x = group, y = minCor)) +
+ geom_boxplot() +
+ scale_x_discrete(name = "") +
+ scale_y_continuous(name = "Robustness") +
+ theme_bw() +
+ theme(plot.title = element_text(hjust = 0.5),
+                  text = element_text(size = 20))
+dev.off()
+
+plot_rep2 <- Reduce(rbind, list(main, unfrozen, no_prime)) %>%
+  left_join(mutate(kegg.df.com, path = pathID) %>% select(path, top_cat, category), by = "path") %>%
+  mutate(group = ifelse(model == "Selected gene sets", "Selected GOs and KEGGs", "All GOs + KEGGs"),
+         training = recode(training, "Step 1 + step 3" = "Step 1 + Step 3", 
+                                    "Step 1 + step 2 + step 3" = "Step 1 + Step 2 + Step 3"),
+         training = factor(training, levels = c("Step 3", "Step 1 + Step 3",  "Step 1 + Step 2 + Step 3"))) %>%
+  ggplot(aes(x = training, y = minCor)) +
+  geom_boxplot() +
+  scale_x_discrete(name = "") +
+  scale_y_continuous(name = "Robustness") +
+  theme_bw() +
+ theme(text = element_text(size = 20))
+
+png("figures/mainModel_robustness.png", height = 900, width = 2500, res = 300)
+plot_rep2
+dev.off()
+
+
 
 png("figures/minCor_pretraning_comp_abstract.png", height = 300,  width = 600)
 subset(df.path_sel, group == "Selected GOs and KEGGs") %>%

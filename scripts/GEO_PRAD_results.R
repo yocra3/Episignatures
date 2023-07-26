@@ -441,24 +441,24 @@ gsva_path_df$TCGA_prop <- sapply(gsva_path_df$category, function(path) {
 })
 
 
-png("figures/TCGAvsGEO_GSVA_GOmodel_comp.png", width = 1000)
+png("figures/TCGAvsGEO_GSVA_NetActivity_comp.png", width = 3000, res = 300, height = 1500)
 gsva_path_df %>% gather(Dataset, logFC, c(3:4, 6:7)) %>%
-  mutate(Method = ifelse(grepl("GSVA", Dataset), "GSVA", "GO + KEGG model"),
+  mutate(Method = ifelse(grepl("GSVA", Dataset), "GSVA", "NetActivity"),
         Dataset = ifelse(grepl("TCGA", Dataset), "TCGA", "GEO"),
         Dataset = factor(Dataset, levels = c("TCGA", "GEO"))) %>%
         spread(Method, logFC) %>%
     filter(Signif != "None") %>%
-    ggplot(aes(x = abs(`GO + KEGG model`), y = abs(GSVA), color = Signif.GSVA, shape = Signif.path)) +
-    scale_shape_manual(name = "GO + KEGG model", values = c(19, 7, 3, 17)) +
+    ggplot(aes(x = abs(NetActivity), y = abs(GSVA), color = Signif.GSVA, shape = Signif.path)) +
+    scale_shape_manual(name = "NetActivity", values = c(19, 7, 3, 17)) +
     scale_color_manual(name = "GSVA", values = c("#004D40", "#1E88E5",  "#FFC107", "#9E9E9E")) +
     geom_point() +
-    xlab("absolute logFC in GO + KEGG model") +
+    xlab("absolute logFC in NetActivity") +
     ylab("absolute logFC in GSVA") +
     facet_wrap(~ Dataset, scales = "free") +
     theme_bw()
 dev.off()
 
-png("figures/TCGAvsGEO_GSVA_GOmodel_comp_prop.png", width = 2000, height = 1500, res = 300)
+png("figures/TCGAvsGEO_GSVA_NetActivity_comp_prop.png", width = 2000, height = 1500, res = 300)
 gsva_path_df %>%
     gather(Dataset, Proportion, 11:12) %>%
     mutate(GSVA.Sig = ifelse(Dataset == "GEO_prop",
@@ -468,14 +468,15 @@ gsva_path_df %>%
                         ifelse(Signif.path %in% c("Both", "GEO"), "Significant", "Non-significant"),
                         ifelse(Signif.path %in% c("Both", "TCGA"), "Significant", "Non-significant"))) %>%
     gather(Method, Significance, 13:14) %>%
-    mutate(Method = recode(Method, GSVA.Sig = "GSVA", path.Sig = "GO + KEGG model"),
-            Dataset = recode(Dataset, GEO_prop = "GEO", TCGA_prop = "TCGA" ),
-            Dataset = factor(Dataset, levels = c("TCGA", "GEO"))) %>%
+    mutate(Method = recode(Method, GSVA.Sig = "GSVA", path.Sig = "NetActivity"),
+            Dataset = recode(Dataset, GEO_prop = "GEO-PRAD", TCGA_prop = "TCGA-PRAD" ),
+            Dataset = factor(Dataset, levels = c("TCGA-PRAD", "GEO-PRAD"))) %>%
     ggplot(aes(color = Significance, x = Proportion)) +
     geom_density() +
     facet_grid(Method ~ Dataset) +
     theme_bw() +
-    xlab("Prop. of genes with higher expression in gleason high") +
+    ylab("Density") +
+    xlab("Prop. of genes with higher expression in Gleason high") +
     geom_vline(xintercept = 0.5)
 dev.off()
 
@@ -501,24 +502,24 @@ gsva_path_df %>% gather(Dataset, Proportion, c(11:12)) %>%
 dev.off()
 
 venn_geo <- ggVennDiagram(list(GSVA = subset(gsva_path_df, Signif.GSVA %in% c("Both", "GEO"))$category,
-                              `GO + KEGG` = subset(gsva_path_df, Signif.path %in% c("Both", "GEO"))$category),
+                              NetActivity = subset(gsva_path_df, Signif.path %in% c("Both", "GEO"))$category),
                             set_size = 7, label_size = 7) +
             scale_fill_gradient(low = "#FFFFFF", high = "#FFFFFF") +
-            ggtitle("GEO") +
+            ggtitle("GEO-PRAD") +
             theme(plot.title = element_text(hjust = 0.5, size = 25),
                   legend.position = "none")
 #
 venn_tcga <- ggVennDiagram(list(GSVA = subset(gsva_path_df, Signif.GSVA %in% c("Both", "TCGA"))$category,
-                              `GO + KEGG` = subset(gsva_path_df, Signif.path %in% c("Both", "TCGA"))$category),
+                              NetActivity = subset(gsva_path_df, Signif.path %in% c("Both", "TCGA"))$category),
                             set_size = 7, label_size = 7) +
             scale_fill_gradient(low = "#FFFFFF", high = "#FFFFFF") +
-            ggtitle("TCGA") +
+            ggtitle("TCGA-PRAD") +
             theme(plot.title = element_text(hjust = 0.5, size = 25),
                   legend.position = "none")
 
 #
 venn_both <- ggVennDiagram(list(GSVA = subset(gsva_path_df, Signif.GSVA %in% c("Both"))$category,
-                              `GO + KEGG` = subset(gsva_path_df, Signif.path %in% c("Both"))$category),
+                              NetActivity = subset(gsva_path_df, Signif.path %in% c("Both"))$category),
                             set_size = 7, label_size = 7) +
             scale_fill_gradient(low = "#FFFFFF", high = "#FFFFFF") +
             ggtitle("Both") +

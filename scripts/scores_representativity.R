@@ -140,7 +140,7 @@ pcs_model_prad_scores <- data.frame(tumor_pcs[["TCGA-PRAD"]]$scores$x,
 cor_prad <- cor(tumor_pcs[["TCGA-PRAD"]]$vst$x, tumor_pcs[["TCGA-PRAD"]]$scores$x)
 
 corplot_prad <- ggcorrplot(abs(cor_prad), method = "circle", hc.order = FALSE,
-      title = "PRAD") +
+      title = "TCGA-PRAD") +
   scale_x_discrete("Original gene expression") +
   scale_y_discrete(name = "NetActivity GSAS") +
   theme(plot.title = element_text(hjust = 0.5, size = 18),
@@ -191,7 +191,7 @@ pc_plot10 <- ggplot(pc_summary, aes(x = prop10*100, y = pc10*100)) +
 # dev.off()
 
 
-png("figures/tumors_score_variance_abstract.png", height = 300,  width = 600)
+png("figures/tumors_score_variance_abstract.png", height = 900,  width = 1800, res = 300)
 ggplot(pc_summary, aes(x = prop10*100, y = pc10*100)) +
     geom_point(size = 2.5) +
     theme_bw() +
@@ -273,15 +273,23 @@ plot_represent <- data.frame(Perc = c(rda_gtex$CCA$tot.chi/rda_gtex$tot.chi, rda
   ggplot(aes(x = Dataset, y = Perc*100)) +
   geom_bar(stat = "identity") +
   xlab("Dataset") +
-  ylab("Variance expl. by GSAS (%)") +
+  ylab("Representativity") +
   theme_bw() +
   ylim(c(0, 100)) +
-  theme(text = element_text(size = 14))
+  theme(text = element_text(size = 20))
 
 
 #
-load("results/manuscript/df_gtex_training_replicability.Rdata")
 
+png("figures/mainModel_representativity.png", width = 2000, height = 1000, res = 300)
+plot_represent
+dev.off()
+
+png("figures/corPlot_IBD.png", width = 2000, height = 1000, res = 300)
+corplot_ibd
+dev.off()
+
+load("results/manuscript/df_gtex_training_replicability.Rdata")
 
 plot_rep <- ggplot(df.path_sel, aes(x = group, y = minCor, color = training)) +
  geom_boxplot() +

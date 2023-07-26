@@ -199,6 +199,7 @@ prad_scores <- computeGeneSetScores(prad_prep, "gtex_gokegg")
 
 mod_prad <- model.matrix(~ gleason + paper_Subtype + age_at_index + race, colData(prad))
 lm.prad <- lmFit(assay(prad_scores), mod_prad) %>% eBayes()
+tab.prad <- topTable(lm.prad, coef = 2, n = Inf)
 
 metal.prad <- createMETAL_tab(lm.prad)
 write.table(metal.prad, file = "results/PRAD_metanalysis/PRAD_metal.txt",
@@ -234,6 +235,7 @@ gse169038_scores <- computeGeneSetScores(gse169038_prep, "gtex_gokegg")
 
 mod_gse169038 <- model.matrix(~ gleason + race + decipher, colData(gse169038_scores))
 lm.gse169038 <- lmFit(assay(gse169038_scores), mod_gse169038) %>% eBayes()
+tab.gse169038 <- topTable(lm.gse169038, coef = 2, n = Inf)
 
 metal.gse169038 <- createMETAL_tab(lm.gse169038)
 write.table(metal.gse169038, file = "results/PRAD_metanalysis/GSE169038_metal.txt",
@@ -302,11 +304,11 @@ prad_meta <- mutate(prad_meta,
 
 
 
-prad_meta_txt <- select(prad_meta, MarkerName, Direction, Effect, StdErr,  `P-value`, p_adj)
+prad_meta_txt <- dplyr::select(prad_meta, MarkerName, Direction, Effect, StdErr,  `P-value`, p_adj)
 library(NetActivityData)
 data(gtex_gokegg_annot)
 colnames(prad_meta_txt) <- c("GeneSet", "Direction", "Effect", "StdErr", "pvalue", "adj_pvalue")
-prad_meta_txt <- right_join(select(gtex_gokegg_annot, GeneSet, Term), prad_meta_txt, by = "GeneSet") %>%
+prad_meta_txt <- right_join(dplyr::select(gtex_gokegg_annot, GeneSet, Term), prad_meta_txt, by = "GeneSet") %>%
   as_tibble() %>% arrange(pvalue)
 
 write.table(prad_meta_txt, file = "results/PRAD_metanalysis/PRAD_metanalysis.tsv",
@@ -320,7 +322,7 @@ ggplot(prad_meta, aes(x = factor(concor), y = -log10(`P-value`))) +
 
 meta_sig <- subset(prad_meta, p_adj < 0.05)
 
-dataset_meta <- data.frame(Dataset = c("GSE141551", "GSE169038", "GSE183019", "GSE201284", "GSE21034", "GSE46691", "GSE70768", "GSE70769", "PRAD"),
+dataset_meta <- data.frame(Dataset = c("GSE141551", "GSE169038", "GSE183019", "GSE201284", "GSE21034", "GSE46691", "GSE70768", "GSE70769", "TCGA-PRAD"),
                           Technology = c("HumanHT-12", "HuEx1.0", "RNAseq", "RNAseq", "HuEx1.0", "HuEx1.0", "HumanHT-12", "HumanHT-12", "RNAseq"),
                           N = c(503, 1131, 226, 123, 150, 545, 122, 91, 334))
 
@@ -385,13 +387,6 @@ plotWeights <- function(geneset){
 p1 <- function()  plotForest("GO:0048012", xlim = c(-1.5, 1))
 p2 <- function()  plotForest("GO:0051984", xlim = c(-1.5, 1))
 
-png("figures/PRAD_metaanalysis.png", width = 1200, height = 800)
-plot_grid(
-  plot_grid(ggdraw(p1), plotWeights("GO:0048012"), ncol = 2, labels = c("A", "B")),
-  plot_grid(ggdraw(p2), plotWeights("GO:0051984"), ncol = 2, labels = c("C", "D")),
-  nrow = 2
-)
-dev.off()
 
 plotForest("GO:0051984", xlim = c(-1.5, 1))
 plotWeights("GO:0051984")
@@ -418,4 +413,215 @@ par(font=4)
 text(-1, c(18,12,6), pos = 4, c("RNAseq",
                                "HumanHT-12",
                                "HuEx1.0"))
+dev.off()
+
+## Check genes in original data
+##### Compute normalized gene expression per gene as in NetActivity
+
+sel_genes <- c(ESM1 = "ENSG00000164283", PAK1 = "ENSG00000149269", MET = "ENSG00000105976", SMC6 = "ENSG00000163029", CDT1 = "ENSG00000167513", RAD18 = "ENSG00000070950" )
+
+### GSE46691
+load("results/preprocess/GSE46691/GSE46691_ENSEMBL.Rdata")
+gse46691_prep <- prepareSummarizedExperiment(gse46691_ensemb, "gtex_gokegg")
+
+gse46691_prep$gleason <- factor(ifelse(gse46691_prep$`gleason score:ch1` >= 8, "High", "Low"), levels = c("Low", "High"))
+gse46691_prep$metastasis <- gse46691_prep$`metastatic event:ch1`
+
+mod_gse46691 <- model.matrix(~ gleason + metastasis, colData(gse46691_prep))
+lm.gse46691 <- lmFit(assay(gse46691_prep), mod_gse46691) %>% eBayes()
+tab.gse46691_gene <- topTable(lm.gse46691, coef = 2, n = Inf)
+
+### GSE141551
+load("results/preprocess/GSE141551/GSE141551_ENSEMBL.Rdata")
+gse141551_prep <- prepareSummarizedExperiment(gse141551_se, "gtex_gokegg")
+gse141551_prep$gleason <- factor(ifelse(gse141551_prep$`gleason_group:ch1` == "8-10", "High", "Low"), levels = c("Low", "High"))
+gse141551_prep$race <- gse141551_prep$`race:ch1`
+gse141551_prep$age <- gse141551_prep$`age_group:ch1`
+gse141551_prep$stage <- gse141551_prep$`stage_disease:ch1`
+
+mod_gse141551 <- model.matrix(~ gleason + race + age + stage, colData(gse141551_prep))
+lm.gse141551 <- lmFit(assay(gse141551_prep), mod_gse141551) %>% eBayes()
+tab.gse141551_gene <- topTable(lm.gse141551, coef = 2, n = Inf)
+
+## GSE21034
+load("results/preprocess/GSE21034/GSE21034_ENSEMBL.Rdata")
+gse21034_prep <- prepareSummarizedExperiment(gse21034_ensemb, "gtex_gokegg")
+gse21034_prep$gleason <- factor(ifelse(gse21034_prep$`biopsy_gleason_grade:ch1` >= 8, "High", "Low"), levels = c("Low", "High"))
+gse21034_prep$metastasis <- gse21034_prep$`tumor type:ch1`
+
+mod_gse21034 <- model.matrix(~ gleason + metastasis, colData(gse21034_prep))
+lm.gse21034 <- lmFit(assay(gse21034_prep), mod_gse21034) %>% eBayes()
+tab.gse21034_gene <- topTable(lm.gse21034, coef = 2, n = Inf)
+
+## GSE70768
+load("results/preprocess/GSE70768/GSE70768_ENSEMBL.Rdata")
+gse70768_prep <- prepareSummarizedExperiment(gse70768_se_filt[rowMeans(is.na(assay(gse70768_se_filt))) == 0, ], "gtex_gokegg")
+gse70768_prep$gleason <- factor(ifelse(sapply(strsplit(gse70768_prep$`tumour gleason:ch1`, "="), `[`, 1) %>% as.numeric() >= 8, "High", "Low"), levels = c("Low", "High"))
+gse70768_prep$age <- as.numeric(gse70768_prep$`age at diag:ch1`)
+gse70768_prep$tum_prop <- as.numeric(gsub("%", "", gse70768_prep$`tumour %:ch1`))
+
+mod_gse70768 <- model.matrix(~ gleason + age + tum_prop, colData(gse70768_prep))
+lm.gse70768 <- lmFit(assay(gse70768_prep)[, rownames(mod_gse70768)], mod_gse70768) %>% eBayes()
+tab.gse70768_gene <- topTable(lm.gse70768, coef = 2, n = Inf)
+
+## GSE70769
+load("results/preprocess/GSE70769/GSE70769_ENSEMBL.Rdata")
+gse70769_prep <- prepareSummarizedExperiment(gse70769_se_filt, "gtex_gokegg")
+gse70769_prep$gleason <- factor(ifelse(sapply(strsplit(gse70769_prep$`tumour gleason:ch1`, "="), `[`, 1) %>% as.numeric() >= 8, "High", "Low"), levels = c("Low", "High"))
+
+mod_gse70769 <- model.matrix(~ gleason, colData(gse70769_prep))
+lm.gse70769 <- lmFit(assay(gse70769_prep), mod_gse70769) %>% eBayes()
+tab.gse70769_gene <- topTable(lm.gse70769, coef = 2, n = Inf)
+
+## GSE183019
+load("results/preprocess/GSE183019/GSE183019_counts.Rdata")
+gse183019_dds <- DESeqDataSet(gse183019_se, design = ~ 1)
+gse183019_vst <- varianceStabilizingTransformation(gse183019_dds)
+
+rownames(gse183019_vst) <- mapIds(org.Hs.eg.db,
+    keys = rownames(gse183019_vst),
+    column = 'ENSEMBL',
+    keytype = 'SYMBOL')
+
+gse183019_vst <- gse183019_vst[!is.na(rownames(gse183019_vst)), ]
+gse183019_vst <- gse183019_vst[!duplicated(rownames(gse183019_vst)), ]
+
+gse183019_prep <- prepareSummarizedExperiment(gse183019_vst, "gtex_gokegg")
+gse183019_prep$gleason <- factor(ifelse(gse183019_prep$`gleason score:ch1` %in% c("4+4", "4+5", "5+4", "5+5 T4"), "High", "Low"), levels = c("Low", "High"))
+gse183019_prep$age <- as.numeric(gse183019_prep$`age:ch1`)
+
+
+mod_gse183019 <- model.matrix(~ gleason + age, colData(gse183019_prep))
+lm.gse183019 <- lmFit(assay(gse183019_prep), mod_gse183019) %>% eBayes()
+tab.gse183019_gene <- topTable(lm.gse183019, coef = 2, n = Inf)
+
+## GSE201284
+load("results/preprocess/GSE201284/GSE201284_counts.Rdata")
+
+gse201284_dds <- DESeqDataSet(gse201284_se, design = ~ 1)
+gse201284_vst <- varianceStabilizingTransformation(gse201284_dds)
+
+
+rownames(gse201284_vst) <- mapIds(org.Hs.eg.db,
+    keys = rownames(gse201284_vst),
+    column = 'ENSEMBL',
+    keytype = 'SYMBOL')
+
+gse201284_vst <- gse201284_vst[!is.na(rownames(gse201284_vst)), ]
+gse201284_vst <- gse201284_vst[!duplicated(rownames(gse201284_vst)), ]
+
+gse201284_vst_filt <- gse201284_vst[, gse201284_vst$`sample type:ch1` == "TUMOR" ]
+gse201284_prep <- prepareSummarizedExperiment(gse201284_vst_filt, "gtex_gokegg")
+
+gse201284_prep$gleason <- factor(ifelse(gse201284_prep$`patient gleason score:ch1` %in% c("3+5", "3+5 T4", "4+4", "4+5", "5+4", "5+5", "4+4 T5", "4+5 T3", "5+4 T3"), "High", "Low"), levels = c("Low", "High"))
+gse201284_prep$age <- as.numeric(gse201284_prep$`age:ch1`)
+gse201284_prep$tumor_prop <- as.numeric(gse201284_prep$`% tumor:ch1`)
+
+
+mod_gse201284 <- model.matrix(~ gleason + age + tumor_prop, colData(gse201284_prep))
+lm.gse201284 <- lmFit(assay(gse201284_prep)[, rownames(mod_gse201284)], mod_gse201284) %>% eBayes()
+tab.gse201284_gene <- topTable(lm.gse201284, coef = 2, n = Inf)
+
+## TCGA
+prad <- loadHDF5SummarizedExperiment("results/TCGA_gexp_coding_PRAD/", prefix = "vsd_norm_prad_tumor")
+prad$gleason <- factor(ifelse(prad$paper_Reviewed_Gleason_category == ">=8", "High", "Low"), levels = c("Low", "High"))
+assay(prad) <- data.matrix(assay(prad))
+
+prad_prep <- prepareSummarizedExperiment(prad, "gtex_gokegg")
+
+mod_prad <- model.matrix(~ gleason + paper_Subtype + age_at_index + race, colData(prad_prep))
+lm.prad <- lmFit(assay(prad_prep), mod_prad) %>% eBayes()
+tab.prad_gene <- topTable(lm.prad, coef = 2, n = Inf)
+
+
+## GSE169038
+gse169038_se <- loadHDF5SummarizedExperiment("results/GSE169038/", prefix = "network_genes")
+assay(gse169038_se) <- data.matrix(assay(gse169038_se))
+gse169038_se$race <- ifelse(grepl( "White", gse169038_se$characteristics_ch1.4), "EUR", "AFR")
+gse169038_se$decipher <- factor(gsub("decipher risk group: ", "", gse169038_se$characteristics_ch1.3), levels = c("Lower", "Average", "Higher"))
+gse169038_se$primary <- gsub("primary gleason: ", "", gse169038_se$characteristics_ch1.1)
+gse169038_se$secondary <- gsub("secondary gleason: ", "", gse169038_se$characteristics_ch1.2)
+gse169038_se$primary <- as.numeric(ifelse(gse169038_se$primary == "--", 1, gse169038_se$primary))
+gse169038_se$secondary <- as.numeric(ifelse(gse169038_se$secondary == "--", 1, gse169038_se$secondary))
+gse169038_se$gleason_cat <- paste(gse169038_se$primary, gse169038_se$secondary, sep = "-")
+gse169038_se$gleason <- factor(ifelse(gse169038_se$primary == 5 |  gse169038_se$secondary == 5 | gse169038_se$gleason_cat == "4+4", "High", "Low"), levels = c("Low", "High"))
+
+gse169038_se_filt <- gse169038_se[, !(gse169038_se$primary == 1 |  gse169038_se$secondary == 1)]
+gse169038_prep <- prepareSummarizedExperiment(gse169038_se_filt, "gtex_gokegg")
+
+mod_gse169038 <- model.matrix(~ gleason + race + decipher, colData(gse169038_prep))
+lm.gse169038 <- lmFit(assay(gse169038_prep), mod_gse169038) %>% eBayes()
+tab.gse169038_gene <- topTable(lm.gse169038, coef = 2, n = Inf)
+
+sel_gos <- c("GO:0048012", "GO:0051984")
+sel_tab_cols <- function(df1, df2, dataset_name){
+  rbind(df1[sel_genes, ] %>%
+    mutate(gene = names(sel_genes),
+           dataset =  dataset_name),
+       df2[sel_gos, ] %>%
+    mutate(gene = sel_gos,
+           dataset =  dataset_name)    
+           ) %>%
+    dplyr::select(logFC, P.Value, gene, dataset)
+}
+
+merge_tabs <- function(df1, df2){
+
+  df1_sel <- dplyr::select(df1, -dataset)
+  if (unique(df1$dataset) != ""){
+    colnames(df1_sel)[1:2] <- paste0(colnames(df1_sel)[1:2], "_", unique(df1$dataset))
+  }
+  df2_sel <- dplyr::select(df2, -dataset)
+  colnames(df2_sel)[1:2] <- paste0(colnames(df2_sel)[1:2], "_", unique(df2$dataset))
+
+  left_join(df1_sel, df2_sel, by = "gene") %>%
+    mutate(dataset = "")
+}
+
+gene_tabs <- Map(sel_tab_cols,  list(tab.gse141551_gene, tab.gse169038_gene, tab.gse183019_gene, tab.gse201284_gene, tab.gse21034_gene, tab.gse46691_gene, tab.gse70768_gene, tab.gse70769_gene, tab.prad_gene),
+                  list(tab.gse141551, tab.gse169038, tab.gse183019, tab.gse201284, tab.gse21034, tab.gse46691, tab.gse70768, tab.gse70769, tab.prad), 
+                  c("GSE141551", "GSE169038", "GSE183019", "GSE201284", "GSE21034", "GSE46691", "GSE70768", "GSE70769", "TCGA-PRAD"))
+gene_tab <- Reduce(merge_tabs, gene_tabs) %>%
+  gather(Name, Value, c(1:2, 4:19)) %>%
+  mutate(Dataset = sapply(strsplit(Name, "_"), `[`, 2), 
+         Measure = sapply(strsplit(Name, "_"), `[`, 1)) %>%
+  dplyr::select(-Name) %>%
+  spread(Measure, Value) %>%
+  mutate(Signif = ifelse(P.Value < 0.05, "Significant", "Non-Significant")) %>%
+  as_tibble()
+
+
+go1_plot <- gene_tab %>%
+  filter(gene %in% c("GO:0048012", "ESM1", "PAK1", "MET")) %>%
+  mutate(gene = factor(gene, levels = c("GO:0048012", "ESM1", "PAK1", "MET")),
+        Dataset = factor(Dataset, levels = c("TCGA-PRAD", "GSE201284", "GSE183019", "GSE70769", "GSE70768", "GSE141551", "GSE46691", "GSE21034", "GSE169038" ))) %>%
+  ggplot(aes(x = gene, y = logFC, fill = Dataset, color = Signif )) +
+  ylab("Standardized logFC") +
+  xlab("") +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  scale_fill_manual(values = c("green1", "green3", "green4", "lightblue", "blue", "blue4", "pink", "red", "red4")) +
+  scale_color_manual(name = "", values = c("white", "black")) +
+  theme_bw()
+
+
+
+go2_plot <- gene_tab %>%
+  filter(gene %in% c("GO:0051984", "SMC6", "CDT1", "RAD18")) %>%
+  mutate(gene = factor(gene, levels = c("GO:0051984", "SMC6", "CDT1", "RAD18")),
+        Dataset = factor(Dataset, levels = c("TCGA-PRAD", "GSE201284", "GSE183019", "GSE70769", "GSE70768", "GSE141551", "GSE46691", "GSE21034", "GSE169038" ))) %>%
+  ggplot(aes(x = gene, y = logFC, fill = Dataset, color = Signif )) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  ylab("Standardized logFC") +
+  xlab("") +
+  scale_fill_manual(values = c("green1", "green3", "green4", "lightblue", "blue", "blue4", "pink", "red", "red4")) +
+  scale_color_manual(name = "", values = c("white", "black")) +
+  theme_bw()
+
+
+png("figures/PRAD_metaanalysis.png", width = 1500, height = 800)
+plot_grid(
+  plot_grid(ggdraw(p1), plotWeights("GO:0048012"), go1_plot, ncol = 3, labels = LETTERS[1:3]),
+  plot_grid(ggdraw(p2), plotWeights("GO:0051984"), go2_plot, ncol = 3, labels = LETTERS[4:6]),
+  nrow = 2
+)
 dev.off()

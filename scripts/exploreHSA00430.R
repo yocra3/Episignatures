@@ -145,21 +145,21 @@ plot_weight
 dev.off()
 
 #
-brain_path <- subset(path_df,Symbol  %in% c("GAD1", "GAD2", "FMO1"))
+brain_path <- subset(path_df,Symbol  %in% c("GAD1", "GAD2"))
 brain_mat <- t(data.matrix(assay(gtex.vst[brain_path$ensembl, ] )))
 colnames(brain_mat) <- brain_path$Symbol
 
 plot_genes <- data.frame(brain_mat, Tissue = gtex.vst$smts) %>%
   filter(!Tissue %in% c("", "Fallopian Tube", "Bladder", "Cervix Uteri", "Kidney")) %>%
-  mutate(Group = ifelse(!Tissue %in% c("Brain"), "Other tissue", Tissue)) %>%
-  gather(Gene, Expression, 1:3) %>%
-  ggplot(aes(x = Tissue, y = Expression, color = Group)) +
+  mutate(Group = ifelse(!Tissue %in% c("Brain"), "Other tissues", Tissue)) %>%
+  gather(Gene, Expression, 1:2) %>%
+  ggplot(aes(x = Tissue, y = Expression, fill = Group)) +
   geom_violin() +
-  scale_color_manual(values = c("#f2f205", "grey")) +
+  scale_fill_manual(values = c("#f2f2057c", "#bebebe82")) +
   facet_grid(Gene ~ ., scales = "free_y") +
-  theme_bw()
-
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
 #
-png("figures/hsa00430_sel_gene_exprs.png", width = 6000, height = 1500, res = 300)
+png("figures/hsa00430_sel_gene_exprs.png", width = 6000, height = 2000, res = 300)
 plot_genes
 dev.off()
